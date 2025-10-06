@@ -1,31 +1,17 @@
-import { DynamicModule, Global, Module } from '@nestjs/common';
+import { DynamicModule, Module } from '@nestjs/common';
 
 import { LoggerService } from './logger.service';
 
-@Global()
-@Module({})
+@Module({
+  providers: [LoggerService],
+  exports: [LoggerService],
+})
 export class LoggerModule {
-  static forRoot(): DynamicModule {
+  static register(context: string): DynamicModule {
     return {
       module: LoggerModule,
       providers: [
-        {
-          provide: LoggerService,
-          useFactory: () => new LoggerService('Application'),
-        },
-      ],
-      exports: [LoggerService],
-    };
-  }
-
-  static forFeature(context: string): DynamicModule {
-    return {
-      module: LoggerModule,
-      providers: [
-        {
-          provide: LoggerService,
-          useFactory: () => new LoggerService(context),
-        },
+        { provide: LoggerService, useValue: new LoggerService(context) },
       ],
       exports: [LoggerService],
     };
