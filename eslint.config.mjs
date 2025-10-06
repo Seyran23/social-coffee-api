@@ -21,13 +21,13 @@ export default [
       },
       globals: {
         ...globals.node,
-        ...globals.es2024
-      }
+        ...globals.es2024,
+      },
     },
     plugins: {
       '@typescript-eslint': typescript,
-      'prettier': prettier,
-      'import': importPlugin,
+      prettier: prettier,
+      import: importPlugin,
       'unused-imports': unusedImports,
     },
     rules: {
@@ -42,36 +42,34 @@ export default [
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
 
-
       // ===== IMPORT ORGANIZATION RULES =====
       'import/order': [
         'error',
         {
-          'groups': [
-            'builtin',    // Node.js built-in modules (fs, path, etc.)
-            'external',   // npm packages
-            'internal',   // Your own modules with absolute paths
-            'parent',     // ../something
-            'sibling',    // ./something
-            'index'       // ./index or ../index
+          groups: [
+            'builtin', // Node.js built-in modules (fs, path, etc.)
+            'external', // npm packages
+            'internal', // Your own modules with absolute paths
+            'parent', // ../something
+            'sibling', // ./something
+            'index', // ./index or ../index
           ],
           'newlines-between': 'always',
-          'alphabetize': {
-            'order': 'asc',
-            'caseInsensitive': true
+          alphabetize: {
+            order: 'asc',
+            caseInsensitive: true,
           },
-          'pathGroups': [
+          pathGroups: [
             {
-              'pattern': '@/**',
-              'group': 'internal',
-              'position': 'before'
-            }
+              pattern: '@/**',
+              group: 'internal',
+              position: 'before',
+            },
           ],
-          'pathGroupsExcludedImportTypes': ['builtin']
-        }
+          pathGroupsExcludedImportTypes: ['builtin'],
+        },
       ],
 
-      // 'import/no-unresolved': 'error',
       'import/first': 'error',
       'import/newline-after-import': 'error',
 
@@ -80,15 +78,16 @@ export default [
       'unused-imports/no-unused-vars': [
         'warn',
         {
-          'vars': 'all',
-          'varsIgnorePattern': '^_',     // Variables starting with _ are ignored
-          'args': 'after-used',
-          'argsIgnorePattern': '^_'      // Function parameters starting with _ are ignored
-        }
+          vars: 'all',
+          args: 'after-used',
+          argsIgnorePattern: '^_', // Function parameters starting with _ are ignored
+          varsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
       ],
 
       // ===== CODE QUALITY RULES =====
-      'no-var': 'error',
       'no-console': process.env.NODE_ENV === 'production' ? 'error' : 'warn',
       'no-debugger': process.env.NODE_ENV === 'production' ? 'error' : 'warn',
       'no-alert': 'warn',
@@ -98,22 +97,22 @@ export default [
       'no-duplicate-imports': 'error',
 
       // ===== BEST PRACTICES =====
-      'curly': ['error', 'all'],
+      curly: ['error', 'all'],
       'no-throw-literal': 'error',
       'no-return-await': 'error',
       'require-await': 'error',
-      'no-empty': ['error', { 'allowEmptyCatch': true }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
       'no-unreachable': 'error',
 
       // ===== STYLE CONSISTENCY  =====
       'prefer-template': 'error',
       'object-shorthand': 'error',
       'quote-props': ['error', 'as-needed'],
-
       'prefer-rest-params': 'error',
       'no-param-reassign': 'warn',
       '@typescript-eslint/no-empty-function': 'off',
 
+      'no-unused-vars': 'off',
     },
     settings: {
       'import/resolver': {
