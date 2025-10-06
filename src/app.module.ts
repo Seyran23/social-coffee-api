@@ -11,7 +11,7 @@ import { HealthModule } from './modules/health/health.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    LoggerModule.forRoot(),
+    LoggerModule.register('Application'),
     PrismaModule,
     HealthModule,
   ],
