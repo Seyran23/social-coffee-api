@@ -7,10 +7,204 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Role {
+  USER
+  ADMIN
+  CAFE_MANAGER
+}
+
+enum ChatSessionStatus {
+  PENDING
+  ACTIVE
+  ENDED
+  EXPIRED
+}
+
+enum LookingFor {
+  ROMANTIC_RELATIONSHIP
+  CASUAL_DATING
+  FRIENDSHIP
+  NETWORKING
+  ACTIVITY_PARTNER
+  STUDY_BUDDY
+  LANGUAGE_EXCHANGE
+  COFFEE_CHAT
+  EVENTS_COMPANION
+}
+
+enum VenueStatus {
+  ACTIVE
+  TEMPORARILY_CLOSED
+  PERMANENTLY_CLOSED
+}
+
+enum InteractionType {
+  LIKE
+}
+
+enum TokenType {
+  REFRESH
+  RESET_PASSWORD
+}
+
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String    @id @default(uuid())
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  birthDate       DateTime  @map("birth_date")
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  gender          Gender
+  role            Role      @default(USER)
+  profileImageUrl String?   @map("profile_image_url")
+  bio             String    @db.VarChar(500)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  preference Preference? @relation(name: "UserPreference")
+
+  userInterests        UserInterest[] @relation("UserToUserInterests")
+  sessionsAsUser1      ChatSession[]  @relation("User1Sessions")
+  sessionsAsUser2      ChatSession[]  @relation("User2Sessions")
+  sentMessages         Message[]      @relation("MessageSender")
+  interactionsAsActor  Interaction[]  @relation("InteractionsAsActor")
+  interactionsAsTarget Interaction[]  @relation("InteractionsAsTarget")
+  tokens               Token[]        @relation("UserTokens")
+
+  @@map("users")
+}
+
+model Preference {
+  id              String       @id @default(cuid())
+  userId          String       @unique @map("user_id")
+  minAge          Int          @map("min_age")
+  maxAge          Int          @map("max_age")
+  preferredGender Gender       @map("preferred_gender")
+  lookingFor      LookingFor[] @map("looking_for")
+
+  user User @relation(name: "UserPreference", fields: [userId], references: [id])
+
+  @@map("preferences")
+}
+
+model Venue {
+  id             String      @id @default(cuid())
+  name           String
+  mapUrl         String      @map("map_url")
+  latitude       Float?
+  longitude      Float?
+  geofenceMeters Int         @default(150) @map("geofence_meters")
+  status         VenueStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  chatSessions ChatSession[] @relation("VenueSessions")
+  interactions Interaction[] @relation("VenueInteractions")
+
+  @@map("venues")
+}
+
+model ChatSession {
+  id        String            @id @default(cuid())
+  venueId   String            @map("venue_id")
+  user1Id   String?           @map("user1_id")
+  user2Id   String?           @map("user2_id")
+  status    ChatSessionStatus @default(PENDING)
+  startedAt DateTime?         @map("started_at")
+  expiresAt DateTime?         @map("expires_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  venue    Venue     @relation("VenueSessions", fields: [venueId], references: [id], onDelete: Cascade)
+  user1    User?     @relation("User1Sessions", fields: [user1Id], references: [id], onDelete: SetNull)
+  user2    User?     @relation("User2Sessions", fields: [user2Id], references: [id], onDelete: SetNull)
+  messages Message[] @relation("ChatSessionToMessage")
+
+  @@index([venueId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("chat_sessions")
+}
+
+model Interest {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users UserInterest[] @relation("InterestToUserInterests")
+
+  @@map("interests")
+}
+
+model UserInterest {
+  userId     String   @map("user_id")
+  interestId String   @map("interest_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation("UserToUserInterests", fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation("InterestToUserInterests", fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@index([interestId])
+  @@map("user_interests")
+}
+
+model Message {
+  id            String   @id @default(cuid())
+  chatSessionId String   @map("chat_session_id")
+  senderId      String   @map("sender_id")
+  content       String   @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  chatSession ChatSession @relation("ChatSessionToMessage", fields: [chatSessionId], references: [id], onDelete: Cascade)
+  sender      User        @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatSessionId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Interaction {
+  id           String          @id @default(cuid())
+  venueId      String          @map("venue_id") // scope to venue (optional)
+  actorUserId  String          @map("actor_user_id") // the user who liked
+  targetUserId String          @map("target_user_id") // the target user
+  type         InteractionType
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  actorUser  User  @relation("InteractionsAsActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  targetUser User  @relation("InteractionsAsTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  venue      Venue @relation("VenueInteractions", fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([venueId, actorUserId, targetUserId, type])
+  @@index([actorUserId])
+  @@index([targetUserId])
+  @@index([venueId])
+  @@map("interactions")
+}
+
+model Token {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  token      String    @unique @db.Text
+  type       TokenType
+  deviceInfo String?   @map("device_info") @db.Text
+  ipAddress  String?   @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime  @map("expires_at")
+
+  user User @relation("UserTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("tokens")
 }
