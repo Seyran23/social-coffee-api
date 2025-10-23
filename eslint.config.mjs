@@ -22,6 +22,7 @@ export default [
       globals: {
         ...globals.node,
         ...globals.es2024,
+        ...globals.jest,
       },
     },
     plugins: {
