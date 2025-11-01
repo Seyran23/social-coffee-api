@@ -119,15 +119,15 @@ export class TokenService {
     const resetToken = this.jwtService.sign(
       { sub: userId, email, type: TokenType.RESET_PASSWORD },
       {
-        secret: this.configService.get<string>('JWT_RESET_PASSWORD_SECRET'),
-        expiresIn: this.configService.get<string>(
+        secret: this.configService.getOrThrow('JWT_RESET_PASSWORD_SECRET'),
+        expiresIn: this.configService.getOrThrow(
           'JWT_RESET_PASSWORD_EXPIRATION',
         ),
       },
     );
 
     const expirationInMs = ms(
-      this.configService.get('JWT_RESET_PASSWORD_EXPIRATION'),
+      this.configService.getOrThrow('JWT_RESET_PASSWORD_EXPIRATION'),
     );
     const expiresAt = new Date(Date.now() + expirationInMs);
 
@@ -228,7 +228,9 @@ export class TokenService {
     deviceInfo?: string,
     ipAddress?: string,
   ): Promise<void> {
-    const expirationInMs = ms(this.configService.get('JWT_REFRESH_EXPIRATION'));
+    const expirationInMs = ms(
+      this.configService.getOrThrow('JWT_REFRESH_EXPIRATION'),
+    );
     const expiresAt = new Date(Date.now() + expirationInMs);
 
     await this.database.token.create({
