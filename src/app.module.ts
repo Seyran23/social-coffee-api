@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from '@/modules/auth/auth.module';
+import { RedisModule } from '@/modules/redis/redis.module';
 import { VenueModule } from '@/modules/venue/venue.module';
 
 import { AppController } from './app.controller';
@@ -24,6 +25,7 @@ import { HealthModule } from './modules/health/health.module';
     }),
     LoggerModule.register('Application'),
     PrismaModule,
+    RedisModule,
     AuthModule,
     VenueModule,
     HealthModule,
