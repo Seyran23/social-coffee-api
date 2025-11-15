@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 
-import { PreferenceController } from './preference.controller';
-import { PreferenceService } from './preference.service';
+import { LoggerModule } from '@/common/logger/logger.module';
+import { PreferenceController } from '@/modules/preference/preference.controller';
+import { PreferenceService } from '@/modules/preference/preference.service';
 
 @Module({
+  imports: [LoggerModule.register('Preference')],
   controllers: [PreferenceController],
   providers: [PreferenceService],
 })
