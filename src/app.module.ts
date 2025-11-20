@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from '@/modules/auth/auth.module';
+import { FileUploadModule } from '@/modules/file-upload/file-upload.module';
 import { RedisModule } from '@/modules/redis/redis.module';
 import { VenueModule } from '@/modules/venue/venue.module';
 
@@ -28,6 +29,7 @@ import { HealthModule } from './modules/health/health.module';
     RedisModule,
     AuthModule,
     VenueModule,
+    FileUploadModule,
     HealthModule,
   ],
   controllers: [AppController],
