@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { FileUploadModule } from '@/modules/file-upload/file-upload.module';
 import { PreferenceModule } from '@/modules/preference/preference.module';
+import { ProfileModule } from '@/modules/profile/profile.module';
 import { RedisModule } from '@/modules/redis/redis.module';
 import { VenueModule } from '@/modules/venue/venue.module';
 
@@ -32,6 +33,7 @@ import { HealthModule } from './modules/health/health.module';
     VenueModule,
     FileUploadModule,
     PreferenceModule,
+    ProfileModule,
     HealthModule,
   ],
   controllers: [AppController],
