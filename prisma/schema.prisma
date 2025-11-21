@@ -54,19 +54,20 @@ enum TokenType {
 }
 
 model User {
-  id              String    @id @default(uuid())
-  firstName       String    @map("first_name")
-  lastName        String    @map("last_name")
-  birthDate       DateTime  @map("birth_date")
-  email           String    @unique
-  passwordHash    String    @map("password_hash")
-  gender          Gender
-  role            Role      @default(USER)
-  profileImageUrl String?   @map("profile_image_url")
-  bio             String    @db.VarChar(500)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                   String    @id @default(uuid())
+  firstName            String    @map("first_name")
+  lastName             String    @map("last_name")
+  birthDate            DateTime  @map("birth_date")
+  email                String    @unique
+  passwordHash         String    @map("password_hash")
+  gender               Gender
+  role                 Role      @default(USER)
+  profileImageUrl      String?   @map("profile_image_url")
+  profileImagePublicId String?   @map("profile_image_public_id")
+  bio                  String    @db.VarChar(500)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
 
   preference Preference? @relation(name: "UserPreference")
 
