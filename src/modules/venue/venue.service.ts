@@ -3,18 +3,24 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, VenueStatus } from '@prisma/client';
+import { Prisma, type Venue, VenueStatus } from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
+import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
+import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
 import { VenueResponseDto } from '@/modules/venue/dto/response/venue-response.dto';
 import { VenueWithQrCodeDto } from '@/modules/venue/dto/response/venue-with-qrcode.dto';
 import { VenuesWithPagination } from '@/modules/venue/interfaces/venues-with-pagination.interface';
-import { extractLatLonFromGoogleMaps } from '@/modules/venue/utils/map-url.util';
+import {
+  extractLatLonFromGoogleMaps,
+  haversineDistance,
+  isWithinDistance,
+} from '@/modules/venue/utils/map-url.util';
 import { generateQRCodeDataURL } from '@/modules/venue/utils/qr-code.util';
 
 @Injectable()
@@ -22,6 +28,7 @@ export class VenueService {
   constructor(
     private readonly database: PrismaService,
     private readonly logger: LoggerService,
+    private readonly redis: RedisService,
   ) {}
 
   async getVenue(id: string): Promise<VenueWithQrCodeDto> {
@@ -246,5 +253,151 @@ export class VenueService {
     this.logger.log(`Successfully soft deleted venue: ${venue.name} (${id})`);
 
     return deletedVenue;
+  }
+
+  async checkIn(
+    userId: string,
+    venueId: string,
+    dto: CheckInDto,
+  ): Promise<{ id: string; name: string }> {
+    const venue = await this.validateVenueForCheckIn(venueId, dto);
+
+    await this.handlePreviousVenueCheckIn(userId, venueId);
+    await this.performCheckIn(userId, venueId);
+
+    this.logger.log(
+      `User ${userId} successfully checked in to venue ${venueId}`,
+    );
+
+    return {
+      id: venue.id,
+      name: venue.name,
+    };
+  }
+
+  async checkOut(userId: string, venueId: string): Promise<void> {
+    const currentVenue = await this.redis.getUserCurrentVenue(userId);
+    if (currentVenue !== venueId) {
+      throw new BadRequestException(VENUE_MESSAGES.NOT_CHECKED_IN);
+    }
+
+    await this.performCheckOut(userId, venueId);
+
+    this.logger.log(
+      `User ${userId} successfully checked out from venue ${venueId}`,
+    );
+
+    return;
+  }
+
+  private async validateVenueForCheckIn(
+    venueId: string,
+    dto: CheckInDto,
+  ): Promise<Venue> {
+    const venue = await this.getVenueById(venueId);
+
+    this.validateVenueStatus(venue);
+    this.validateUserGeofence(venue, dto);
+
+    return venue;
+  }
+
+  private async getVenueById(
+    venueId: string,
+    operation?: string,
+  ): Promise<Venue> {
+    const venue = await this.database.venue.findUnique({
+      where: { id: venueId },
+    });
+
+    if (!venue) {
+      const context = operation ? `for ${operation} ` : '';
+      this.logger.warn(`Venue not found ${context} with ID: ${venueId}`);
+
+      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
+    }
+
+    return venue;
+  }
+
+  private validateVenueStatus(venue: VenueResponseDto) {
+    if (venue.status === VenueStatus.ACTIVE) {
+      return;
+    }
+
+    this.logger.warn(
+      `Check in attempted to ${venue.status} venue ${venue.id} `,
+    );
+
+    const statusMessages: Record<VenueStatus, string> = {
+      [VenueStatus.ACTIVE]: '',
+      [VenueStatus.TEMPORARILY_CLOSED]: VENUE_MESSAGES.VENUE_TEMPORARILY_CLOSED,
+      [VenueStatus.PERMANENTLY_CLOSED]: VENUE_MESSAGES.VENUE_PERMANENTLY_CLOSED,
+    };
+
+    const message =
+      statusMessages[venue.status] ?? VENUE_MESSAGES.VENUE_NOT_AVAILABLE;
+
+    throw new BadRequestException(message);
+  }
+
+  private validateUserGeofence(venue: Venue, dto: CheckInDto) {
+    if (!venue.latitude || !venue.longitude) {
+      throw new BadRequestException(
+        VENUE_MESSAGES.VENUE_COORDINATES_UNAVAILABLE,
+      );
+    }
+
+    const isWithinGeofence = isWithinDistance(
+      { userLat: dto.latitude, userLon: dto.longitude },
+      { venueLat: venue.latitude, venueLon: venue.longitude },
+      venue.geofenceMeters,
+    );
+
+    if (isWithinGeofence) {
+      return;
+    }
+
+    const distance = haversineDistance(
+      { userLat: dto.latitude, userLon: dto.longitude },
+      { venueLat: venue.latitude, venueLon: venue.longitude },
+    );
+
+    this.logger.warn(
+      `User too far from venue ${venue.id}: ${Math.round(distance)}m away`,
+    );
+
+    throw new BadRequestException(VENUE_MESSAGES.OUTSIDE_GEOFENCE);
+  }
+
+  private async handlePreviousVenueCheckIn(
+    userId: string,
+    newVenueId: string,
+  ): Promise<void> {
+    const currentVenue = await this.redis.getUserCurrentVenue(userId);
+
+    if (currentVenue === newVenueId) {
+      throw new BadRequestException(VENUE_MESSAGES.ALREADY_CHECKED_IN);
+    }
+
+    if (currentVenue) {
+      this.logger.log(
+        `User ${userId} auto-checking out from venue ${currentVenue}`,
+      );
+
+      await this.redis.removeUserFromVenue(userId, currentVenue);
+    }
+  }
+
+  private async performCheckIn(userId: string, venueId: string): Promise<void> {
+    await this.redis.addUserToVenue(userId, venueId);
+    await this.redis.updateHeartbeat(userId);
+  }
+
+  private async performCheckOut(
+    userId: string,
+    venueId: string,
+  ): Promise<void> {
+    await this.redis.removeUserFromVenue(userId, venueId);
   }
 }

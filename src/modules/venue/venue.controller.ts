@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import {
   ApiAllErrorResponses,
@@ -27,6 +28,7 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { ResponseBuilder } from '@/common/utils/response-builder';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import { ChangeStatusDto } from '@/modules/venue/dto/request/change-status.dto';
+import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
@@ -193,5 +195,49 @@ export class VenueController {
   async deleteVenue(@Param('id') id: string) {
     const venue = await this.venueService.deleteVenue(id);
     return ResponseBuilder.success(venue, VENUE_MESSAGES.VENUE_DELETED);
+  }
+
+  @Post(':id/checkin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Check-in to venue',
+    description:
+      'Check-in to a venue. Validates venue is active and user is within geofence.',
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.CHECK_IN_SUCCESS,
+  })
+  @ApiErrorResponse(400, VENUE_MESSAGES.OUTSIDE_GEOFENCE)
+  @ApiErrorResponse(404, VENUE_MESSAGES.VENUE_NOT_FOUND)
+  async checkinToVenue(
+    @Param('id') venueId: string,
+    @Body() checkInDto: CheckInDto,
+    @CurrentUser('userId') userId: string,
+  ) {
+    const result = await this.venueService.checkIn(userId, venueId, checkInDto);
+    return ResponseBuilder.success(result, VENUE_MESSAGES.CHECK_IN_SUCCESS);
+  }
+
+  @Post(':id/checkout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Check-out from venue',
+    description:
+      'Check-out from a venue. Validates user is currently checked in to the venue.',
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.CHECK_OUT_SUCCESS,
+  })
+  @ApiErrorResponse(400, VENUE_MESSAGES.NOT_CHECKED_IN)
+  async checkoutFromVenue(
+    @Param('id') venueId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    await this.venueService.checkOut(userId, venueId);
+    return ResponseBuilder.success(null, VENUE_MESSAGES.CHECK_OUT_SUCCESS);
   }
 }
