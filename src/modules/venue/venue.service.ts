@@ -30,15 +30,26 @@ export class VenueService {
     private readonly redis: RedisService,
   ) {}
 
-  async getVenue(id: string): Promise<VenueWithQRCode> {
+  private async getVenueById(
+    venueId: string,
+    operation?: string,
+  ): Promise<Venue> {
     const venue = await this.database.venue.findUnique({
-      where: { id },
+      where: { id: venueId },
     });
 
     if (!venue) {
-      this.logger.warn(`Venue not found with ID: ${id}`);
+      const context = operation ? `for ${operation} ` : '';
+      this.logger.warn(`Venue not found ${context} with ID: ${venueId}`);
+
       throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
     }
+
+    return venue;
+  }
+
+  async getVenue(id: string): Promise<VenueWithQRCode> {
+    const venue = await this.getVenueById(id, 'retrieval');
 
     const qrCode = await generateQRCodeDataURL(venue.id);
 
@@ -129,12 +140,7 @@ export class VenueService {
   }
 
   async changeVenueStatus(id: string, status?: VenueStatus): Promise<Venue> {
-    const venue = await this.database.venue.findUnique({ where: { id } });
-
-    if (!venue) {
-      this.logger.warn(`Venue not found for status change with ID: ${id}`);
-      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
-    }
+    const venue = await this.getVenueById(id, 'status change');
 
     const newStatus =
       status ??
@@ -192,12 +198,7 @@ export class VenueService {
     id: string,
     updateVenueDto: UpdateVenueDto,
   ): Promise<Venue> {
-    const venue = await this.database.venue.findUnique({ where: { id } });
-
-    if (!venue) {
-      this.logger.warn(`Venue not found for update with ID: ${id}`);
-      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
-    }
+    const venue = await this.getVenueById(id, 'update');
 
     const updateData: Prisma.VenueUpdateInput = { ...updateVenueDto };
 
@@ -230,12 +231,7 @@ export class VenueService {
   }
 
   async deleteVenue(id: string): Promise<Venue> {
-    const venue = await this.database.venue.findUnique({ where: { id } });
-
-    if (!venue) {
-      this.logger.warn(`Venue not found for deletion with ID: ${id}`);
-      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
-    }
+    const venue = await this.getVenueById(id, 'deletion');
 
     const deletedVenue = await this.database.venue.update({
       where: { id },
@@ -289,24 +285,6 @@ export class VenueService {
 
     this.validateVenueStatus(venue);
     this.validateUserGeofence(venue, dto);
-
-    return venue;
-  }
-
-  private async getVenueById(
-    venueId: string,
-    operation?: string,
-  ): Promise<Venue> {
-    const venue = await this.database.venue.findUnique({
-      where: { id: venueId },
-    });
-
-    if (!venue) {
-      const context = operation ? `for ${operation} ` : '';
-      this.logger.warn(`Venue not found ${context} with ID: ${venueId}`);
-
-      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
-    }
 
     return venue;
   }
