@@ -13,8 +13,7 @@ import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
-import { VenueResponseDto } from '@/modules/venue/dto/response/venue-response.dto';
-import { VenueWithQrCodeDto } from '@/modules/venue/dto/response/venue-with-qrcode.dto';
+import { VenueWithQRCode } from '@/modules/venue/interfaces/venue-with-qr-code.interface';
 import { VenuesWithPagination } from '@/modules/venue/interfaces/venues-with-pagination.interface';
 import {
   extractLatLonFromGoogleMaps,
@@ -31,7 +30,7 @@ export class VenueService {
     private readonly redis: RedisService,
   ) {}
 
-  async getVenue(id: string): Promise<VenueWithQrCodeDto> {
+  async getVenue(id: string): Promise<VenueWithQRCode> {
     const venue = await this.database.venue.findUnique({
       where: { id },
     });
@@ -129,10 +128,7 @@ export class VenueService {
     };
   }
 
-  async changeVenueStatus(
-    id: string,
-    status?: VenueStatus,
-  ): Promise<VenueResponseDto> {
+  async changeVenueStatus(id: string, status?: VenueStatus): Promise<Venue> {
     const venue = await this.database.venue.findUnique({ where: { id } });
 
     if (!venue) {
@@ -158,9 +154,7 @@ export class VenueService {
     return updatedVenue;
   }
 
-  async createVenue(
-    createVenueDto: CreateVenueDto,
-  ): Promise<VenueWithQrCodeDto> {
+  async createVenue(createVenueDto: CreateVenueDto): Promise<VenueWithQRCode> {
     const coordinates = await extractLatLonFromGoogleMaps(
       createVenueDto.mapUrl,
     );
@@ -197,7 +191,7 @@ export class VenueService {
   async updateVenue(
     id: string,
     updateVenueDto: UpdateVenueDto,
-  ): Promise<VenueResponseDto> {
+  ): Promise<Venue> {
     const venue = await this.database.venue.findUnique({ where: { id } });
 
     if (!venue) {
@@ -235,7 +229,7 @@ export class VenueService {
     return updatedVenue;
   }
 
-  async deleteVenue(id: string): Promise<VenueResponseDto> {
+  async deleteVenue(id: string): Promise<Venue> {
     const venue = await this.database.venue.findUnique({ where: { id } });
 
     if (!venue) {
@@ -259,7 +253,7 @@ export class VenueService {
     userId: string,
     venueId: string,
     dto: CheckInDto,
-  ): Promise<{ id: string; name: string }> {
+  ): Promise<Venue> {
     const venue = await this.validateVenueForCheckIn(venueId, dto);
 
     await this.handlePreviousVenueCheckIn(userId, venueId);
@@ -269,10 +263,7 @@ export class VenueService {
       `User ${userId} successfully checked in to venue ${venueId}`,
     );
 
-    return {
-      id: venue.id,
-      name: venue.name,
-    };
+    return venue;
   }
 
   async checkOut(userId: string, venueId: string): Promise<void> {
@@ -320,7 +311,7 @@ export class VenueService {
     return venue;
   }
 
-  private validateVenueStatus(venue: VenueResponseDto) {
+  private validateVenueStatus(venue: Venue) {
     if (venue.status === VenueStatus.ACTIVE) {
       return;
     }

@@ -1,7 +1,7 @@
-import { VenueResponseDto } from '@/modules/venue/dto/response/venue-response.dto';
+import { type Venue } from '@prisma/client';
 
 export interface VenuesWithPagination {
-  venues: VenueResponseDto[];
+  venues: Venue[];
   total: number;
   page: number;
   limit: number;
