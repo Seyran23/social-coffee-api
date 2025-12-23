@@ -1,8 +1,8 @@
-// src/modules/redis/redis.service.ts
 import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { UserProfile } from '@/modules/profile/types/user-profile.type';
 import { REDIS_LIMITS } from '@/modules/redis/constants/limits';
 import { REDIS_KEY_PREFIX } from '@/modules/redis/constants/prefixes';
 import { REDIS_TTL } from '@/modules/redis/constants/time-to-live';
@@ -236,7 +236,7 @@ export class RedisService implements OnModuleDestroy {
 
   // PROFILE CACHING
 
-  async cacheProfile(userId: string, profile: any): Promise<void> {
+  async cacheProfile(userId: string, profile: UserProfile): Promise<void> {
     await this.redis.setex(
       `profile:${userId}`,
       REDIS_TTL.PROFILE_CACHE,
@@ -244,7 +244,7 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
-  async getCachedProfile(userId: string): Promise<any | null> {
+  async getCachedProfile(userId: string): Promise<UserProfile | null> {
     const data = await this.redis.get(`profile:${userId}`);
     return data ? JSON.parse(data) : null;
   }
