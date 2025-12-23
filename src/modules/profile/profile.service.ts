@@ -1,4 +1,345 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Gender } from '@prisma/client';
+
+import { LoggerService } from '@/common/logger/logger.service';
+import { PrismaService } from '@/database/prisma.service';
+import {
+  FILE_SIZE_LIMITS,
+  IMAGE_TRANSFORMATIONS,
+} from '@/modules/file-upload/constants/file-upload';
+import { UploadFolder } from '@/modules/file-upload/interfaces/upload-options.interface';
+import { FileUploadService } from '@/modules/file-upload/services/file-upload.service';
+import { DEFAULT_PREFERENCES } from '@/modules/profile/constants/defaults';
+import { PROFILE_SELECT } from '@/modules/profile/constants/queries';
+import { UpdateProfileDto } from '@/modules/profile/dto/request/update-profile.dto';
+import { ProfilesForFeedPaginated } from '@/modules/profile/types/paginated-feed-profiles.type';
+import { ProfileForFeed } from '@/modules/profile/types/profile-for-feed.type';
+import { UserProfile } from '@/modules/profile/types/user-profile.type';
+import { isInAgeRange } from '@/modules/profile/utils/age';
+import {
+  mapToProfile,
+  mapToProfileForFeed,
+} from '@/modules/profile/utils/mapper';
+import { RedisService } from '@/modules/redis/redis.service';
+
+import { PROFILE_MESSAGES } from './constants/messages';
 
 @Injectable()
-export class ProfileService {}
+export class ProfileService {
+  constructor(
+    private readonly database: PrismaService,
+    private readonly redis: RedisService,
+    private readonly fileUploadService: FileUploadService,
+    private readonly logger: LoggerService,
+  ) {}
+
+  private async fetchProfile(userId: string): Promise<UserProfile> {
+    const cached = await this.redis.getCachedProfile(userId);
+    if (cached) {
+      this.logger.debug(`Profile cache hit for user: ${userId}`);
+      return cached;
+    }
+
+    const user = await this.database.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { ...PROFILE_SELECT, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(PROFILE_MESSAGES.PROFILE_NOT_FOUND);
+    }
+
+    const profile = mapToProfile(user);
+
+    await this.redis.cacheProfile(userId, profile);
+
+    this.logger.log(`Profile fetched and cached for user: ${userId}`);
+    return profile;
+  }
+
+  private async fetchProfiles(userIds: string[]): Promise<UserProfile[]> {
+    const { cached, uncachedIds } = await this.getFromCache(userIds);
+
+    if (uncachedIds.length === 0) {
+      return cached;
+    }
+
+    const freshProfiles = await this.fetchAndCacheProfiles(uncachedIds);
+    return [...cached, ...freshProfiles];
+  }
+
+  async getMyProfile(userId: string): Promise<UserProfile> {
+    const myProfile = await this.fetchProfile(userId);
+    return myProfile;
+  }
+
+  async getUserProfile(userId: string): Promise<Omit<UserProfile, 'email'>> {
+    const profile = await this.fetchProfile(userId);
+
+    const { email, ...publicProfile } = profile;
+
+    return publicProfile;
+  }
+
+  async updateMyProfile(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<UserProfile> {
+    const user = await this.database.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.firstName && { firstName: dto.firstName }),
+        ...(dto.lastName && { lastName: dto.lastName }),
+        ...(dto.bio !== undefined && { bio: dto.bio }),
+      },
+      select: { ...PROFILE_SELECT, email: true },
+    });
+
+    await this.redis.invalidateProfile(userId);
+
+    this.logger.log(`Profile updated for user: ${userId}`);
+
+    return mapToProfile(user);
+  }
+
+  async uploadProfileImage(
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<{ profileImageUrl: string }> {
+    this.logger.log(`Uploading profile image for user: ${userId}`);
+
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        profileImagePublicId: true,
+      },
+    });
+
+    if (!user) {
+      this.logger.warn(`User not found for image upload: ${userId}`);
+      throw new NotFoundException(PROFILE_MESSAGES.PROFILE_NOT_FOUND);
+    }
+
+    try {
+      const uploadResult = await this.fileUploadService.replaceFile(
+        file,
+        user.profileImagePublicId ?? undefined,
+        {
+          folder: UploadFolder.PROFILE,
+          prefix: 'profile',
+          userId,
+          transformation: IMAGE_TRANSFORMATIONS.PROFILE,
+          maxSize: FILE_SIZE_LIMITS.IMAGE,
+        },
+      );
+
+      const updatedUser = await this.database.user.update({
+        where: { id: userId },
+        data: {
+          profileImageUrl: uploadResult.secureUrl,
+          profileImagePublicId: uploadResult.publicId,
+        },
+        select: {
+          profileImageUrl: true,
+        },
+      });
+
+      if (!updatedUser.profileImageUrl) {
+        this.logger.error('Profile image URL is null after upload');
+        throw new InternalServerErrorException('Failed to save profile image');
+      }
+
+      await this.redis.invalidateProfile(userId);
+
+      this.logger.log(
+        `Profile image uploaded successfully for user: ${userId}`,
+      );
+
+      return {
+        profileImageUrl: updatedUser.profileImageUrl,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to upload profile image for user: ${userId}`,
+        error.stack,
+      );
+      throw new BadRequestException(PROFILE_MESSAGES.IMAGE_UPLOAD_FAILED);
+    }
+  }
+
+  async deleteProfileImage(userId: string): Promise<void> {
+    this.logger.log(`Deleting profile image for user: ${userId}`);
+
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        profileImagePublicId: true,
+      },
+    });
+
+    if (!user) {
+      this.logger.warn(`User not found for image deletion: ${userId}`);
+      throw new NotFoundException(PROFILE_MESSAGES.PROFILE_NOT_FOUND);
+    }
+
+    if (!user.profileImagePublicId) {
+      this.logger.warn(`No profile image to delete for user: ${userId}`);
+      throw new BadRequestException(PROFILE_MESSAGES.NO_IMAGE_TO_DELETE);
+    }
+
+    try {
+      await this.fileUploadService.deleteFile(user.profileImagePublicId);
+
+      await this.database.user.update({
+        where: { id: userId },
+        data: { profileImageUrl: null, profileImagePublicId: null },
+        select: { ...PROFILE_SELECT, email: true },
+      });
+
+      await this.redis.invalidateProfile(userId);
+
+      this.logger.log(`Profile image deleted successfully for user: ${userId}`);
+
+      return;
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete profile image for user: ${userId}`,
+        error.stack,
+      );
+      throw new BadRequestException(PROFILE_MESSAGES.IMAGE_DELETE_FAILED);
+    }
+  }
+
+  async discoverProfiles(
+    userId: string,
+    limit = 20,
+    cursor?: string,
+  ): Promise<ProfilesForFeedPaginated> {
+    const venueId = await this.redis.getUserCurrentVenue(userId);
+    if (!venueId) {
+      throw new BadRequestException(
+        'You must be checked in to a venue to discover profiles',
+      );
+    }
+
+    const myProfile = await this.fetchProfile(userId);
+    const preferences = myProfile.preference ?? DEFAULT_PREFERENCES;
+
+    const otherUserIds = await this.getOtherUsersAtVenue(userId, venueId);
+    if (otherUserIds.length === 0) {
+      return { profiles: [], total: 0, nextCursor: null, hasMore: false };
+    }
+
+    const allProfiles = await this.fetchProfiles(otherUserIds);
+
+    const filteredProfiles = this.filterByPreferences(allProfiles, preferences);
+
+    const discoveredProfiles = filteredProfiles.map(profile =>
+      mapToProfileForFeed(profile),
+    );
+
+    return this.paginateProfiles(discoveredProfiles, limit, cursor);
+  }
+
+  private async getFromCache(
+    userIds: string[],
+  ): Promise<{ cached: UserProfile[]; uncachedIds: string[] }> {
+    const cached: UserProfile[] = [];
+    const uncachedIds: string[] = [];
+
+    for (const userId of userIds) {
+      const profile = await this.redis.getCachedProfile(userId);
+      if (profile) {
+        cached.push(profile);
+      } else {
+        uncachedIds.push(userId);
+      }
+    }
+
+    return { cached, uncachedIds };
+  }
+
+  private async fetchAndCacheProfiles(
+    userIds: string[],
+  ): Promise<UserProfile[]> {
+    const users = await this.database.user.findMany({
+      where: { id: { in: userIds }, deletedAt: null },
+      select: PROFILE_SELECT,
+    });
+
+    const profiles: UserProfile[] = [];
+
+    for (const user of users) {
+      const profile = mapToProfile(user);
+      await this.redis.cacheProfile(profile.id, profile);
+      profiles.push(profile);
+    }
+
+    return profiles;
+  }
+
+  private async getOtherUsersAtVenue(
+    userId: string,
+    venueId: string,
+  ): Promise<string[]> {
+    const usersAtVenue = await this.redis.getUsersAtVenue(venueId);
+    return usersAtVenue.filter(id => id !== userId);
+  }
+
+  private filterByPreferences(
+    profiles: UserProfile[],
+    preferences: {
+      minAge: number;
+      maxAge: number;
+      preferredGender: Gender | null;
+    },
+  ): UserProfile[] {
+    return profiles.filter(profile => {
+      if (
+        !isInAgeRange(profile.birthDate, preferences.minAge, preferences.maxAge)
+      ) {
+        return false;
+      }
+
+      return !(
+        preferences.preferredGender !== null &&
+        profile.gender !== preferences.preferredGender
+      );
+    });
+  }
+
+  private paginateProfiles(
+    profiles: ProfileForFeed[],
+    limit: number,
+    cursor?: string,
+  ): ProfilesForFeedPaginated {
+    let paginatedProfiles = profiles;
+
+    if (cursor) {
+      const cursorIndex = profiles.findIndex(p => p.id === cursor);
+      if (cursorIndex !== -1) {
+        paginatedProfiles = profiles.slice(cursorIndex + 1);
+      }
+    }
+
+    const resultProfiles = paginatedProfiles.slice(0, limit);
+    const hasMore = paginatedProfiles.length > limit;
+    const nextCursor = hasMore
+      ? resultProfiles[resultProfiles.length - 1].id
+      : null;
+
+    return {
+      profiles: resultProfiles,
+      total: profiles.length,
+      nextCursor,
+      hasMore,
+    };
+  }
+}
