@@ -9,5 +9,6 @@ import { ProfileService } from './profile.service';
   imports: [LoggerModule.register('Profile')],
   controllers: [ProfileController],
   providers: [ProfileService],
+  exports: [ProfileService],
 })
 export class ProfileModule {}
