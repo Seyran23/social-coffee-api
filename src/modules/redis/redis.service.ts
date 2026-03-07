@@ -12,7 +12,7 @@ export class RedisService implements OnModuleDestroy {
   constructor(
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
     private readonly logger: LoggerService,
-  ) { }
+  ) {}
 
   async onModuleDestroy() {
     await this.redis.quit();
@@ -79,7 +79,6 @@ export class RedisService implements OnModuleDestroy {
   async getChatSession(chatSessionId: string): Promise<any | null> {
     const key = this.getChatSessionKey(chatSessionId);
     const data = await this.redis.get(key);
-    console.log('data from redis: ', data);
     return data ? JSON.parse(data) : null;
   }
 
