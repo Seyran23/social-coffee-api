@@ -36,7 +36,7 @@ export class ProfileService {
     private readonly redis: RedisService,
     private readonly fileUploadService: FileUploadService,
     private readonly logger: LoggerService,
-  ) { }
+  ) {}
 
   private async fetchProfile(userId: string): Promise<UserProfile> {
     const cached = await this.redis.getCachedProfile(userId);
@@ -224,7 +224,7 @@ export class ProfileService {
   ): Promise<ProfilesForFeedPaginated> {
     const venueId = await this.redis.getUserCurrentVenue(userId);
 
-    this.logger.log(`[DISCOVER] User ${userId} at venue ${venueId || 'NONE'}`);
+    this.logger.log(`[DISCOVER] User ${userId} at venue ${venueId ?? 'NONE'}`);
 
     if (!venueId) {
       throw new BadRequestException(
@@ -264,13 +264,9 @@ export class ProfileService {
 
     const allProfiles = await this.fetchProfiles(eligibleUserIds);
 
-    console.log('All profiles that s right now in venue: ', allProfiles);
-
     this.logger.log(`[DISCOVER] Fetched ${allProfiles.length} profiles`);
 
     const filteredProfiles = this.filterByPreferences(allProfiles, preferences);
-
-    console.log('Filtered profiles for user: ', filteredProfiles);
 
     this.logger.log(
       `[DISCOVER] After filtering: ${filteredProfiles.length} profiles match preferences`,
@@ -327,7 +323,8 @@ export class ProfileService {
     userId: string,
     venueId: string,
   ): Promise<string[]> {
-    return this.redis.getActiveUsersAtVenue(venueId, userId);
+    const activeUsers = await this.redis.getActiveUsersAtVenue(venueId, userId);
+    return activeUsers;
   }
 
   private async getExcludedUserIds(
@@ -344,13 +341,16 @@ export class ProfileService {
     myLikes.forEach(i => excluded.add(i.targetUserId));
 
     // 2. Active match partner (already in a chat session together)
-    const activeChatSessionId = await this.redis.getUserActiveChatSession(userId);
+    const activeChatSessionId =
+      await this.redis.getUserActiveChatSession(userId);
     if (activeChatSessionId) {
       const session = await this.redis.getChatSession(activeChatSessionId);
       if (session) {
         const partnerId =
           session.user1Id === userId ? session.user2Id : session.user1Id;
-        if (partnerId) excluded.add(partnerId);
+        if (partnerId) {
+          excluded.add(partnerId);
+        }
       }
     }
 
