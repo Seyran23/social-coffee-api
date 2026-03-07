@@ -1,0 +1,235 @@
+MODULES TO ADD
+
+
+
+File Upload:
+docs: https://docs.nestjs.com/techniques/file-upload
+// ====================
+// FILE STRUCTURE
+// ====================
+/*
+src/
+├── modules/
+│   ├── file-upload/                    # Reusable file upload module
+│   │   ├── file-upload.module.ts
+│   │   ├── services/
+│   │   │   ├── cloudinary.service.ts
+│   │   │   └── file-upload.service.ts
+│   │   ├── interfaces/
+│   │   │   ├── upload-options.interface.ts
+│   │   │   └── upload-result.interface.ts
+│   │   ├── validators/
+│   │   │   └── file.validator.ts
+│   │   ├── interceptors/
+│   │   │   └── file-upload.interceptor.ts
+│   │   ├── decorators/
+│   │   │   └── upload-file.decorator.ts
+│   │   ├── guards/
+│   │   │   └── file-size.guard.ts
+│   │   └── config/
+│   │       └── cloudinary.config.ts
+│   │
+│   └── profile/                        # Profile module using file-upload
+│       ├── profile.module.ts
+│       ├── profile.controller.ts
+│       ├── profile.service.ts
+│       ├── entities/
+│       │   └── user.entity.ts
+│       └── dto/
+│           ├── update-profile.dto.ts
+│           └── upload-profile-image.dto.ts
+│
+└── common/
+    ├── guards/
+    │   └── rate-limit.guard.ts
+    └── filters/
+        └── http-exception.filter.ts
+*/
+
+
+1. User Profile Module ⭐ NEW
+
+Purpose: View user profiles as Instagram-style posts with filtering
+
+src/modules/profile/
+profile.controller.ts - REST endpoints
+profile.service.ts - Business logic
+profile.module.ts
+dto/ - DTOs for profile views
+
+Endpoints needed:
+GET /profiles/venue/:venueId - Get filtered users at venue
+GET /profiles/:userId - Get specific user profile
+PUT /profiles/me - Update own profile
+GET /profiles/me - Get own profile
+
+2. QR Code Module ⭐ NEW
+
+Purpose: Handle QR code scanning and venue check-in
+src/modules/qr/
+qr.controller.ts - REST endpoints
+qr.service.ts - Generate & validate QR codes
+qr.module.ts
+dto/ - DTOs for scan/check-in
+
+Endpoints needed:
+POST /qr/scan - Scan QR code, check-in to venue
+GET /qr/generate/:venueId - Generate QR code (admin/manager)
+
+3. Interaction/Like Module ⭐ NEW
+
+Purpose: Handle likes and detect mutual matches
+src/modules/interaction/
+interaction.controller.ts - REST endpoints
+interaction.service.ts - Like logic, mutual match detection
+interaction.module.ts
+dto/ - DTOs for like actions
+
+Endpoints needed:
+POST /interactions/like - Like a user
+DELETE /interactions/unlike/:userId - Unlike
+GET /interactions/my-likes - Get users I liked
+GET /interactions/liked-me - Get users who liked me
+GET /interactions/matches - Get mutual matches
+
+4. User Preference Module ⭐ NEW
+
+Purpose: Manage user preferences for filtering
+src/modules/preference/
+preference.controller.ts - REST endpoints
+preference.service.ts - CRUD operations
+preference.module.ts
+dto/ - DTOs for preferences
+
+Endpoints needed:
+POST /preferences - Create/update preferences
+GET /preferences/me - Get my preferences
+
+5. Interest Module ⭐ NEW
+
+Purpose: Manage interests for user profiles
+src/modules/interest/
+interest.controller.ts - REST endpoints
+interest.service.ts - CRUD operations
+interest.module.ts
+dto/ - DTOs for interests
+
+Endpoints needed:
+GET /interests - List all available interests
+POST /interests/me - Add interests to my profile
+DELETE /interests/me/:interestId - Remove interest
+
+MODULES TO MODIFY
+6. Queue Module ⚠️ MAJOR CHANGES NEEDED
+Current: Queue-based matching system New Logic: Should NOT auto-match. Only create chat when mutual like detected
+Changes needed:
+Remove automatic matching logic (tryMatchUsers, createMatch)
+Keep only for managing active users at venue
+Or consider DELETING entirely if not needed
+
+7. Chat Module ✅ KEEP & MODIFY
+Changes needed:
+Update to only allow chat creation via mutual match
+Add 10-minute expiry enforcement
+Add WebSocket events for match notifications
+
+8. Chat WebSocket Gateway ⭐ NEW/MODIFY
+Purpose: Real-time chat messaging
+src/modules/chat/chat.gateway.ts (already exists)
+Add events for:
+match.found - Notify both users of mutual match
+chat.expired - Notify when 10 min is up
+
+9. Venue Module ✅ ADD
+No changes needed - Already has what you need
+
+
+POST   /venues/:venueId/check-in         // Scan QR & join
+POST   /venues/:venueId/check-out        // Leave venue
+GET    /venues/:venueId/qr               // Generate QR (admin)
+GET    /venues/:venueId/active-users     // Who's at venue
+
+
+10. Auth Module ✅ KEEP
+No changes needed - Already handles authentication
+
+11. Redis Module ✅ KEEP
+Might need updates for:
+Tracking active users at venue
+Cache profiles
+Track who's currently online
+
+WEBSOCKET MODULES NEEDED
+1. Match WebSocket Gateway ⭐ NEW
+Purpose: Real-time match notifications
+src/modules/match/match.gateway.ts
+
+Events:
+match.found - Notify both users
+match.chat_ready - Chat session created
+
+2. Presence WebSocket Gateway ⭐ NEW
+
+Purpose: Track who's online at venue
+src/modules/presence/presence.gateway.ts
+
+Events:
+presence.join - User enters venue
+presence.leave - User leaves venue
+presence.update - Get current users at venue
+
+3. Chat WebSocket Gateway ✅ EXISTS
+Already have: src/modules/chat/chat.gateway.ts Keep and ensure it has:
+Message sending/receiving
+Typing indicators
+Chat expiry notifications
+
+MODULES TO DELETE ❌
+Queue Module - CONSIDER DELETING
+Reason: Your business logic doesn't use queue-based matching. You use mutual likes.
+If you keep it: Remove all matching logic, use only for tracking active venue users
+If you delete it: Move active user tracking to Presence module
+
+SUMMARY
+TO ADD (7 new modules):
+✅ Profile Module (REST)
+✅ QR Code Module (REST)
+✅ Interaction/Like Module (REST)
+✅ Preference Module (REST)
+✅ Interest Module (REST)
+✅ Match Gateway (WebSocket)
+✅ Presence Gateway (WebSocket)
+
+TO MODIFY (3 modules):
+⚠️ Queue Module - Remove matching, keep user tracking OR delete
+⚠️ Chat Module - Add mutual-match-only logic
+⚠️ Redis Module - Add venue presence tracking
+
+TO KEEP (4 modules):
+✅ Auth Module
+✅ Venue Module
+✅ Chat Gateway
+✅ Health Module
+TO DELETE (optional):
+❌ Queue Module - If you decide not to track active users via queue
+
+
+Best Practices
+Reconnect Logic: Add automatic reconnection for dropped connections.
+Use Context or State Management to share socket data across your app.
+Throttle updates if you're handling high-frequency events (e.g., mouse tracking).
+Secure Your Sockets: Use wss:// in production.
+Fallbacks: Consider fallback strategies for older browsers or poor network conditions.
+
+------------------------------------------------
+
+I have 2 questions. according to our app, you scan qr, then if your loc is in the venue, you will see feed of profiles who are in the venue right now. And we said that we are gonna have 2 kind of handling of check out, one is with REST api: it is explicitly happens when user click on the button, and the other is with websocket: it is happens when user is not in the venue anymore.
+
+1st question is that, how to check constantly that user is still in venue?
+2nd question is that, i have also logout endpoint in my auth domain/module where i will delete all tokens and sessions.My question is that, when my user wants to check out, what will be the difference between this endpoint and the one in venue module? They are hsnling diffent things. first deletes all tokens and sessions, the latter deletes user from our cache (redis) and make them check out.
+
+Maybe we can create differrent interfaces for these cases.
+
+------------------------------------------
+
+i suggest to use cached profile for getting user preferences and interests. As in getUserProfile method we either query to db or get it from redis.So what do you think about this?

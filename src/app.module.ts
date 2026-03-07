@@ -1,11 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from '@/modules/auth/auth.module';
+import { ChatModule } from '@/modules/chat/chat.module';
 import { FileUploadModule } from '@/modules/file-upload/file-upload.module';
+import { InteractionModule } from '@/modules/interaction/interaction.module';
 import { PreferenceModule } from '@/modules/preference/preference.module';
+import { PresenceModule } from '@/modules/presence/presence.module';
 import { ProfileModule } from '@/modules/profile/profile.module';
 import { RedisModule } from '@/modules/redis/redis.module';
 import { VenueModule } from '@/modules/venue/venue.module';
@@ -23,6 +27,7 @@ import { HealthModule } from './modules/health/health.module';
         limit: 10,
       },
     ]),
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -35,6 +40,9 @@ import { HealthModule } from './modules/health/health.module';
     PreferenceModule,
     ProfileModule,
     HealthModule,
+    InteractionModule,
+    PresenceModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [
@@ -44,4 +52,4 @@ import { HealthModule } from './modules/health/health.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

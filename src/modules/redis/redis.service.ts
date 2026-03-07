@@ -12,7 +12,7 @@ export class RedisService implements OnModuleDestroy {
   constructor(
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
     private readonly logger: LoggerService,
-  ) {}
+  ) { }
 
   async onModuleDestroy() {
     await this.redis.quit();
@@ -44,14 +44,21 @@ export class RedisService implements OnModuleDestroy {
 
   // CHAT SESSION MANAGEMENT
 
+  // In RedisService
   async setChatSession(
     chatSessionId: string,
     data: {
+      id: string;
       user1Id: string;
       user2Id: string;
       venueId: string;
+      status: string;
       startedAt: number;
       expiresAt: number;
+
+      user1?: { id: string; firstName: string; lastName: string };
+      user2?: { id: string; firstName: string; lastName: string };
+      venue?: { id: string; name: string };
     },
   ): Promise<void> {
     const key = this.getChatSessionKey(chatSessionId);
@@ -72,6 +79,7 @@ export class RedisService implements OnModuleDestroy {
   async getChatSession(chatSessionId: string): Promise<any | null> {
     const key = this.getChatSessionKey(chatSessionId);
     const data = await this.redis.get(key);
+    console.log('data from redis: ', data);
     return data ? JSON.parse(data) : null;
   }
 
@@ -176,6 +184,7 @@ export class RedisService implements OnModuleDestroy {
 
   async addUserToVenue(userId: string, venueId: string): Promise<void> {
     await this.redis.sadd(`venue:${venueId}:users`, userId);
+    await this.redis.sadd('active_venues', venueId);
     await this.redis.setex(
       `user:${userId}:venue`,
       REDIS_TTL.VENUE_PRESENCE,
@@ -186,6 +195,15 @@ export class RedisService implements OnModuleDestroy {
   async removeUserFromVenue(userId: string, venueId: string): Promise<void> {
     await this.redis.srem(`venue:${venueId}:users`, userId);
     await this.redis.del(`user:${userId}:venue`);
+
+    const remaining = await this.redis.scard(`venue:${venueId}:users`);
+    if (remaining === 0) {
+      await this.redis.srem('active_venues', venueId);
+    }
+  }
+
+  async getActiveVenueIds(): Promise<string[]> {
+    return this.redis.smembers('active_venues');
   }
 
   async getUsersAtVenue(venueId: string): Promise<string[]> {
@@ -205,6 +223,21 @@ export class RedisService implements OnModuleDestroy {
 
   async isUserAtVenue(userId: string, venueId: string): Promise<boolean> {
     return (await this.redis.sismember(`venue:${venueId}:users`, userId)) === 1;
+  }
+
+  async getActiveUsersAtVenue(
+    venueId: string,
+    excludeUserId: string,
+  ): Promise<string[]> {
+    const allUsers = await this.getUsersAtVenue(venueId);
+
+    const results = await Promise.all(
+      allUsers
+        .filter(id => id !== excludeUserId)
+        .map(async id => ({ id, active: await this.isUserActive(id) })),
+    );
+
+    return results.filter(u => u.active).map(u => u.id);
   }
 
   // MATCH MANAGEMENT

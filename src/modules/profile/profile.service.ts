@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Gender } from '@prisma/client';
+import { Gender, InteractionType } from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
@@ -36,7 +36,7 @@ export class ProfileService {
     private readonly redis: RedisService,
     private readonly fileUploadService: FileUploadService,
     private readonly logger: LoggerService,
-  ) {}
+  ) { }
 
   private async fetchProfile(userId: string): Promise<UserProfile> {
     const cached = await this.redis.getCachedProfile(userId);
@@ -223,6 +223,9 @@ export class ProfileService {
     cursor?: string,
   ): Promise<ProfilesForFeedPaginated> {
     const venueId = await this.redis.getUserCurrentVenue(userId);
+
+    this.logger.log(`[DISCOVER] User ${userId} at venue ${venueId || 'NONE'}`);
+
     if (!venueId) {
       throw new BadRequestException(
         'You must be checked in to a venue to discover profiles',
@@ -232,14 +235,49 @@ export class ProfileService {
     const myProfile = await this.fetchProfile(userId);
     const preferences = myProfile.preference ?? DEFAULT_PREFERENCES;
 
+    this.logger.log(
+      `[DISCOVER] User ${userId} preferences: minAge=${preferences.minAge}, maxAge=${preferences.maxAge}, gender=${preferences.preferredGender}`,
+    );
+
     const otherUserIds = await this.getOtherUsersAtVenue(userId, venueId);
+
+    this.logger.log(
+      `[DISCOVER] Found ${otherUserIds.length} other users at venue: ${JSON.stringify(otherUserIds)}`,
+    );
+
     if (otherUserIds.length === 0) {
+      this.logger.warn(`[DISCOVER] No other users at venue ${venueId}`);
       return { profiles: [], total: 0, nextCursor: null, hasMore: false };
     }
 
-    const allProfiles = await this.fetchProfiles(otherUserIds);
+    // Exclude users already liked or already matched
+    const excludedIds = await this.getExcludedUserIds(userId, venueId);
+    const eligibleUserIds = otherUserIds.filter(id => !excludedIds.has(id));
+
+    this.logger.log(
+      `[DISCOVER] Eligible users after exclusions: ${eligibleUserIds.length} (excluded ${excludedIds.size})`,
+    );
+
+    if (eligibleUserIds.length === 0) {
+      return { profiles: [], total: 0, nextCursor: null, hasMore: false };
+    }
+
+    const allProfiles = await this.fetchProfiles(eligibleUserIds);
+
+    console.log('All profiles that s right now in venue: ', allProfiles);
+
+    this.logger.log(`[DISCOVER] Fetched ${allProfiles.length} profiles`);
 
     const filteredProfiles = this.filterByPreferences(allProfiles, preferences);
+
+    console.log('Filtered profiles for user: ', filteredProfiles);
+
+    this.logger.log(
+      `[DISCOVER] After filtering: ${filteredProfiles.length} profiles match preferences`,
+    );
+    this.logger.log(
+      `[DISCOVER] Filtered profile IDs: ${JSON.stringify(filteredProfiles.map(p => p.id))}`,
+    );
 
     const discoveredProfiles = filteredProfiles.map(profile =>
       mapToProfileForFeed(profile),
@@ -289,8 +327,34 @@ export class ProfileService {
     userId: string,
     venueId: string,
   ): Promise<string[]> {
-    const usersAtVenue = await this.redis.getUsersAtVenue(venueId);
-    return usersAtVenue.filter(id => id !== userId);
+    return this.redis.getActiveUsersAtVenue(venueId, userId);
+  }
+
+  private async getExcludedUserIds(
+    userId: string,
+    venueId: string,
+  ): Promise<Set<string>> {
+    const excluded = new Set<string>();
+
+    // 1. Users I already liked at this venue
+    const myLikes = await this.database.interaction.findMany({
+      where: { actorUserId: userId, venueId, type: InteractionType.LIKE },
+      select: { targetUserId: true },
+    });
+    myLikes.forEach(i => excluded.add(i.targetUserId));
+
+    // 2. Active match partner (already in a chat session together)
+    const activeChatSessionId = await this.redis.getUserActiveChatSession(userId);
+    if (activeChatSessionId) {
+      const session = await this.redis.getChatSession(activeChatSessionId);
+      if (session) {
+        const partnerId =
+          session.user1Id === userId ? session.user2Id : session.user1Id;
+        if (partnerId) excluded.add(partnerId);
+      }
+    }
+
+    return excluded;
   }
 
   private filterByPreferences(

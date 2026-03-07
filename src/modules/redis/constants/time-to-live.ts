@@ -1,5 +1,5 @@
 export const REDIS_TTL = {
-  HEARTBEAT: 120, // 2 minutes
+  HEARTBEAT: 300, // 5 minutes
   HEARTBEAT_ACTIVE_THRESHOLD: 90000, // 90 seconds (in milliseconds)
 
   CHAT_SESSION: 7200, // 2 hours
