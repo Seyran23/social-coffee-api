@@ -12,34 +12,9 @@ import { DEFAULT_MESSAGE_LIMIT } from '@/modules/chat/constants/default-message-
 import { CHAT_MESSAGES } from '@/modules/chat/constants/messages';
 import { ChatSessionResponseDto } from '@/modules/chat/dto/response/chat-session-response.dto';
 import { MessageResponseDto } from '@/modules/chat/dto/response/message-response.dto';
+import { ChatSessionWithRelations } from '@/modules/chat/interfaces/chat-with-relations.interface';
 import { MessagesOptions } from '@/modules/chat/interfaces/message-options.interface';
 import { RedisService } from '@/modules/redis/redis.service';
-
-export interface ChatSessionWithRelations {
-  id: string;
-  venueId: string;
-  user1Id: string | null;
-  user2Id: string | null;
-  status: ChatSessionStatus;
-  startedAt: Date | null;
-  expiresAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  user1: {
-    id: string;
-    firstName: string | null;
-    lastName: string | null;
-  } | null;
-  user2: {
-    id: string;
-    firstName: string | null;
-    lastName: string | null;
-  } | null;
-  venue: {
-    id: string;
-    name: string;
-  };
-}
 
 @Injectable()
 export class ChatService {
@@ -72,9 +47,6 @@ export class ChatService {
 
     this.validateUserIsParticipant(session, userId);
 
-    console.log('session from db getChatSession: ', session);
-
-    // ✅ CACHE WITH ALL DATA
     if (session.user1Id && session.user2Id) {
       await this.redis.setChatSession(chatSessionId, {
         id: session.id,
@@ -195,8 +167,6 @@ export class ChatService {
       },
     });
 
-    console.log('session from db getPartnerId: ', session);
-
     if (!session) {
       throw new NotFoundException(CHAT_MESSAGES.CHAT_NOT_FOUND);
     }
@@ -230,8 +200,6 @@ export class ChatService {
     const session = await this.database.chatSession.findUnique({
       where: { id: chatSessionId },
     });
-
-    console.log('session from db sendMessage: ', session);
 
     if (!session) {
       throw new NotFoundException(CHAT_MESSAGES.CHAT_NOT_FOUND);
@@ -370,8 +338,6 @@ export class ChatService {
       take: options.limit ?? DEFAULT_MESSAGE_LIMIT,
       orderBy: { createdAt: 'desc' },
     });
-
-    console.log('messages from db (raw version, before mapping): ', messages);
 
     return messages
       .reverse()

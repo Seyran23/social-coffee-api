@@ -1,9 +1,14 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChatSessionStatus, InteractionType } from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
-// import { ChatGateway } from '@/modules/chat/chat.gateway';
+import { CHAT_SESSION_DURATION_MS } from '@/modules/interaction/constants/chat-duration';
 import { InteractionResponseDto } from '@/modules/interaction/dto/response/interaction-response.dto';
 import { MatchResultResponseDto } from '@/modules/interaction/dto/response/match-result-response.dto';
 import { RedisService } from '@/modules/redis/redis.service';
@@ -12,14 +17,11 @@ import { PresenceGateway } from '../presence/presence.gateway';
 
 import { INTERACTION_MESSAGES } from './constants/messages';
 
-const CHAT_SESSION_DURATION_MS = 10 * 60 * 1000; // 10 minutes
-
 @Injectable()
 export class InteractionService {
   constructor(
     private readonly database: PrismaService,
     private readonly redis: RedisService,
-    // private readonly chatGateway: ChatGateway,
     private readonly presenceGateway: PresenceGateway,
     private readonly logger: LoggerService,
   ) {}
@@ -29,12 +31,10 @@ export class InteractionService {
     targetUserId: string,
     venueId: string,
   ): Promise<MatchResultResponseDto> {
-    // Prevent self-like
     if (actorUserId === targetUserId) {
       throw new BadRequestException(INTERACTION_MESSAGES.SELF_LIKE);
     }
 
-    // Validate both users are at the venue
     const [actorAtVenue, targetAtVenue] = await Promise.all([
       this.redis.isUserAtVenue(actorUserId, venueId),
       this.redis.isUserAtVenue(targetUserId, venueId),
@@ -44,7 +44,6 @@ export class InteractionService {
       throw new BadRequestException(INTERACTION_MESSAGES.NOT_AT_VENUE);
     }
 
-    // Check if already liked
     const existingInteraction = await this.database.interaction.findUnique({
       where: {
         venueId_actorUserId_targetUserId_type: {
@@ -60,7 +59,6 @@ export class InteractionService {
       throw new ConflictException(INTERACTION_MESSAGES.ALREADY_LIKED);
     }
 
-    // Check if either user already has an active chat session
     const [actorActiveChat, targetActiveChat] = await Promise.all([
       this.redis.getUserActiveChatSession(actorUserId),
       this.redis.getUserActiveChatSession(targetUserId),
@@ -70,7 +68,6 @@ export class InteractionService {
       throw new BadRequestException(INTERACTION_MESSAGES.ALREADY_IN_CHAT);
     }
 
-    // Create the interaction
     await this.database.interaction.create({
       data: {
         venueId,
@@ -84,7 +81,6 @@ export class InteractionService {
       `User ${actorUserId} liked user ${targetUserId} at venue ${venueId}`,
     );
 
-    // Check for mutual like
     const mutualLike = await this.database.interaction.findUnique({
       where: {
         venueId_actorUserId_targetUserId_type: {
@@ -104,7 +100,6 @@ export class InteractionService {
   }
 
   async unlikeUser(actorUserId: string, targetUserId: string): Promise<void> {
-    // Find the user's current venue
     const venueId = await this.redis.getUserCurrentVenue(actorUserId);
 
     if (!venueId) {
@@ -211,7 +206,6 @@ export class InteractionService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + CHAT_SESSION_DURATION_MS);
 
-    // 1. Create ChatSession
     const chatSession = await this.database.chatSession.create({
       data: {
         venueId,
@@ -234,7 +228,6 @@ export class InteractionService {
       },
     });
 
-    // 2. Cache session in Redis
     await this.redis.setChatSession(chatSession.id, {
       id: chatSession.id,
       user1Id,
@@ -248,16 +241,13 @@ export class InteractionService {
       venue: chatSession.venue,
     });
 
-    // 3. Mark unread match for both users
     await Promise.all([
       this.redis.addUnreadMatch(user1Id, chatSession.id),
       this.redis.addUnreadMatch(user2Id, chatSession.id),
     ]);
 
-    // 4. Track match stat
     await this.redis.trackMatch(venueId);
 
-    // 5. Delete both interaction rows
     await this.database.interaction.deleteMany({
       where: {
         venueId,
@@ -269,7 +259,6 @@ export class InteractionService {
       },
     });
 
-    // 6. Notify both users via WebSocket
     await this.presenceGateway.notifyMatch(user1Id, user2Id, {
       chatSessionId: chatSession.id,
       venueId,
@@ -283,7 +272,6 @@ export class InteractionService {
       `Mutual match! Users ${user1Id} & ${user2Id} at venue ${venueId}. Chat session: ${chatSession.id}`,
     );
 
-    // 7. Return match result (from perspective of the actor who triggered the match)
     return {
       matched: true,
       chatSession: {
@@ -294,9 +282,6 @@ export class InteractionService {
     };
   }
 
-  /**
-   * Get users that the current user has already liked at their current venue
-   */
   async getMyLikesAtVenue(userId: string): Promise<string[]> {
     const venueId = await this.redis.getUserCurrentVenue(userId);
 

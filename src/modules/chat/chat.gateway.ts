@@ -45,22 +45,16 @@ export class ChatGateway
   ) {
     this.logger.setContext(ChatGateway.name);
 
-    // Start expiry warning job
     this.startExpiryWarningJob();
   }
 
-  // ========================================
-  // GATEWAY INITIALIZATION
-  // ========================================
 
   afterInit(server: Server): void {
     this.logger.log('Chat Gateway initialized');
 
-    // Apply middlewares
     server.use(this.wsRateLimitMiddleware.useConnectionLimit());
     server.use(this.wsAuthMiddleware.use());
 
-    // Cleanup job
     setInterval(() => {
       this.wsRateLimitMiddleware.cleanup();
     }, 60000);
@@ -68,9 +62,7 @@ export class ChatGateway
     this.logger.log('Chat Gateway middlewares configured');
   }
 
-  // ========================================
-  // CONNECTION / DISCONNECTION
-  // ========================================
+
 
   async handleConnection(client: AuthenticatedSocket) {
     const { userId, email } = client.user;
@@ -80,13 +72,10 @@ export class ChatGateway
     );
 
     try {
-      // Store socket mapping
       await this.redis.setUserSocket(userId, client.id);
 
-      // Auto-join active chat if exists
       const wasAutoJoined = await this.handleAutoJoinChat(client, userId);
 
-      // Only emit connection message if NOT auto-joined (to avoid duplicate emissions)
       if (!wasAutoJoined) {
         client.emit(CHAT_EVENTS.CHAT_JOINED, {
           userId,
@@ -117,9 +106,7 @@ export class ChatGateway
     }
   }
 
-  // ========================================
-  // CHAT EVENTS
-  // ========================================
+
 
   /**
    * Join chat room
@@ -133,13 +120,10 @@ export class ChatGateway
     const { chatSessionId } = data;
 
     try {
-      // Validate participant
       await this.chatService.validateParticipant(chatSessionId, userId);
 
-      // Join socket room
       client.join(`chat:${chatSessionId}`);
 
-      // Get recent messages
       const [messages, session] = await Promise.all([
         this.chatService.getMessages(chatSessionId, userId, {
           limit: DEFAULT_MESSAGE_LIMIT,
@@ -177,14 +161,12 @@ export class ChatGateway
     }
 
     try {
-      // Send message
       const message = await this.chatService.sendMessage({
         chatSessionId,
         senderId: userId,
         content,
       });
 
-      // Emit to all participants in the chat room
       this.server.to(`chat:${chatSessionId}`).emit(CHAT_EVENTS.MESSAGE, {
         id: message.id,
         chatSessionId: message.chatSessionId,
@@ -217,16 +199,13 @@ export class ChatGateway
     const { chatSessionId, isTyping } = data;
 
     try {
-      // Validate participant
       await this.chatService.validateParticipant(chatSessionId, userId);
 
-      // Broadcast to partner only (not sender)
       client.to(`chat:${chatSessionId}`).emit(CHAT_EVENTS.PARTNER_TYPING, {
         isTyping,
         userId,
       });
     } catch (error) {
-      // Silent fail for typing indicator
       this.logger.debug('Typing indicator error:', error);
     }
   }
@@ -243,7 +222,6 @@ export class ChatGateway
     const { chatSessionId } = data;
 
     try {
-      // End chat
       await this.chatService.endChat(chatSessionId, userId);
 
       // Notify all participants
@@ -261,9 +239,6 @@ export class ChatGateway
     }
   }
 
-  // ========================================
-  // MATCH NOTIFICATION
-  // ========================================
 
   /**
    * Notify both users of a mutual match via WebSocket
@@ -310,9 +285,6 @@ export class ChatGateway
     }
   }
 
-  // ========================================
-  // HELPER METHODS
-  // ========================================
 
   /**
    * Auto-join active chat on reconnection
@@ -394,11 +366,9 @@ export class ChatGateway
       return null;
     }
 
-    // Get socket directly by ID
     const socket = this.server.sockets.sockets.get(socketId);
 
     if (!socket) {
-      // Socket disconnected, clean up Redis
       await this.redis.deleteUserSocket(userId);
       return null;
     }

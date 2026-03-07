@@ -107,9 +107,6 @@ export class PresenceGateway
       this.getUserSocket(user2Id),
     ]);
 
-    console.log('user1Socket', user1Socket);
-    console.log('user2Socket', user2Socket);
-
     const basePayload = {
       chatSessionId: matchData.chatSessionId,
       venueId: matchData.venueId,
@@ -117,8 +114,6 @@ export class PresenceGateway
       expiresAt: matchData.expiresAt,
       timestamp: Date.now(),
     };
-
-    console.log('basePayload', basePayload);
 
     if (user1Socket) {
       user1Socket.emit('match_found', {
