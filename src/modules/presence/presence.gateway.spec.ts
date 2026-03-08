@@ -98,15 +98,21 @@ describe('PresenceGateway', () => {
   describe('handleConnection', () => {
     it('should delegate connection to presenceService', async () => {
       await presenceGateway.handleConnection(mockClient);
-      expect(presenceService.handleUserConnection).toHaveBeenCalledWith(mockClient);
+      expect(presenceService.handleUserConnection).toHaveBeenCalledWith(
+        mockClient,
+      );
     });
 
     it('should emit error and disconnect if connection fails', async () => {
-      vi.spyOn(presenceService, 'handleUserConnection').mockRejectedValue(new Error('Auth failed'));
+      vi.spyOn(presenceService, 'handleUserConnection').mockRejectedValue(
+        new Error('Auth failed'),
+      );
 
       await presenceGateway.handleConnection(mockClient);
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Connection failed' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Connection failed',
+      });
       expect(mockClient.disconnect).toHaveBeenCalled();
     });
   });
@@ -114,7 +120,9 @@ describe('PresenceGateway', () => {
   describe('handleDisconnect', () => {
     it('should delegate disconnection to presenceService', async () => {
       await presenceGateway.handleDisconnect(mockClient);
-      expect(presenceService.handleUserDisconnection).toHaveBeenCalledWith(mockClient);
+      expect(presenceService.handleUserDisconnection).toHaveBeenCalledWith(
+        mockClient,
+      );
     });
   });
 
@@ -128,12 +136,20 @@ describe('PresenceGateway', () => {
   describe('broadcasts', () => {
     it('should broadcast user joined calling presenceService with server instance', async () => {
       await presenceGateway.broadcastUserJoined('user-1', 'venue-1');
-      expect(presenceService.broadcastUserJoined).toHaveBeenCalledWith('user-1', 'venue-1', mockServer);
+      expect(presenceService.broadcastUserJoined).toHaveBeenCalledWith(
+        'user-1',
+        'venue-1',
+        mockServer,
+      );
     });
 
     it('should broadcast user left calling presenceService with server instance', async () => {
       await presenceGateway.broadcastUserLeft('user-1', 'venue-1');
-      expect(presenceService.broadcastUserLeft).toHaveBeenCalledWith('user-1', 'venue-1', mockServer);
+      expect(presenceService.broadcastUserLeft).toHaveBeenCalledWith(
+        'user-1',
+        'venue-1',
+        mockServer,
+      );
     });
   });
 
@@ -160,21 +176,27 @@ describe('PresenceGateway', () => {
 
       await presenceGateway.notifyMatch('user-1', 'user-2', matchData);
 
-      expect(mockUser1Socket.emit).toHaveBeenCalledWith('match_found', expect.objectContaining({
-        chatSessionId: 'chat-1',
-        partner: matchData.user2
-      }));
+      expect(mockUser1Socket.emit).toHaveBeenCalledWith(
+        'match_found',
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          partner: matchData.user2,
+        }),
+      );
 
-      expect(mockUser2Socket.emit).toHaveBeenCalledWith('match_found', expect.objectContaining({
-        chatSessionId: 'chat-1',
-        partner: matchData.user1
-      }));
+      expect(mockUser2Socket.emit).toHaveBeenCalledWith(
+        'match_found',
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          partner: matchData.user1,
+        }),
+      );
     });
 
     it('should delete orphaned socket from redis if not found in server', async () => {
       // Redis says socket-1 exists
       vi.spyOn(redisService, 'getUserSocket').mockResolvedValue('socket-1');
-      
+
       // But server map is empty!
       expect(mockServer.sockets.sockets.has('socket-1')).toBe(false);
 

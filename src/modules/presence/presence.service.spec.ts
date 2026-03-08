@@ -90,13 +90,19 @@ describe('PresenceService', () => {
     });
 
     it('should successfully connect, set map, emit feed and broadcast presence', async () => {
-      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue('venue-1');
-      
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(
+        'venue-1',
+      );
+
       const mockProfiles = [{ id: 'user-2' }];
-      vi.spyOn(profileService, 'discoverProfiles').mockResolvedValue(mockProfiles as any);
-      
+      vi.spyOn(profileService, 'discoverProfiles').mockResolvedValue(
+        mockProfiles as any,
+      );
+
       const mockMyProfile = { id: 'user-1', firstName: 'Test' };
-      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(mockMyProfile as any);
+      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(
+        mockMyProfile as any,
+      );
 
       // Trigger the connection
       await presenceService.handleUserConnection(mockClient);
@@ -124,7 +130,7 @@ describe('PresenceService', () => {
   describe('handleUserDisconnection', () => {
     it('should start a disconnection grace period timer', () => {
       mockClient.venue = { id: 'venue-1' };
-      
+
       presenceService.handleUserDisconnection(mockClient);
 
       expect(setTimeout).toHaveBeenCalled();
@@ -132,13 +138,13 @@ describe('PresenceService', () => {
 
     it('should clear old timer if disconnecting again', () => {
       mockClient.venue = { id: 'venue-1' };
-      
+
       presenceService.handleUserDisconnection(mockClient);
       const firstCallCount = vi.mocked(clearTimeout).mock.calls.length;
 
       // Disconnect again should clear previous timer
       presenceService.handleUserDisconnection(mockClient);
-      
+
       expect(clearTimeout).toHaveBeenCalledTimes(firstCallCount + 1);
     });
   });
@@ -168,9 +174,15 @@ describe('PresenceService', () => {
   describe('broadcastUserJoined', () => {
     it('should broadcast to server room', async () => {
       const mockProfile = { id: 'user-1', firstName: 'John' };
-      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(mockProfile as any);
+      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(
+        mockProfile as any,
+      );
 
-      await presenceService.broadcastUserJoined('user-1', 'venue-1', mockServer);
+      await presenceService.broadcastUserJoined(
+        'user-1',
+        'venue-1',
+        mockServer,
+      );
 
       expect(mockServer.to).toHaveBeenCalledWith('venue:venue-1');
       expect(mockServer.emit).toHaveBeenCalledWith(WS_EVENTS.USER_JOINED, {
