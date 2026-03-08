@@ -76,7 +76,9 @@ describe('AuthService', () => {
     } as any;
 
     it('should throw ConflictException if email exists', async () => {
-      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue({ id: 'existing-id' } as any);
+      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue({
+        id: 'existing-id',
+      } as any);
 
       await expect(authService.register(registerDto)).rejects.toThrow(
         new ConflictException(AUTH_MESSAGES.EMAIL_ALREADY_EXISTS),
@@ -94,7 +96,9 @@ describe('AuthService', () => {
         lastName: registerDto.lastName,
         role: 'USER',
       };
-      vi.spyOn(prismaService.user, 'create').mockResolvedValue(mockCreatedUser as any);
+      vi.spyOn(prismaService.user, 'create').mockResolvedValue(
+        mockCreatedUser as any,
+      );
 
       vi.spyOn(tokenService, 'generateTokens').mockResolvedValue({
         accessToken: 'access_tok',
@@ -103,7 +107,10 @@ describe('AuthService', () => {
 
       const result = await authService.register(registerDto);
 
-      expect(bcrypt.hash).toHaveBeenCalledWith(registerDto.password, expect.any(Number));
+      expect(bcrypt.hash).toHaveBeenCalledWith(
+        registerDto.password,
+        expect.any(Number),
+      );
       expect(prismaService.user.create).toHaveBeenCalledWith({
         data: {
           email: registerDto.email,
@@ -165,8 +172,10 @@ describe('AuthService', () => {
         passwordHash: 'real_hash',
         firstName: 'John',
       };
-      
-      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser as any);
+
+      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue(
+        mockUser as any,
+      );
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
       vi.spyOn(tokenService, 'generateTokens').mockResolvedValue({
         accessToken: 'acc',
@@ -191,7 +200,9 @@ describe('AuthService', () => {
   describe('logOutAllDevices', () => {
     it('should call tokenService to revoke all tokens', async () => {
       await authService.logOutAllDevices('user-1');
-      expect(tokenService.revokeAllRefreshTokens).toHaveBeenCalledWith('user-1');
+      expect(tokenService.revokeAllRefreshTokens).toHaveBeenCalledWith(
+        'user-1',
+      );
     });
   });
 
@@ -199,14 +210,22 @@ describe('AuthService', () => {
     it('should return undefined if user is not found', async () => {
       vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
 
-      const result = await authService.forgotPassword({ email: 'fake@email.com' }, 'u1');
-      
+      const result = await authService.forgotPassword(
+        { email: 'fake@email.com' },
+        'u1',
+      );
+
       expect(result).toBeUndefined();
     });
 
     it('should return token if user is found', async () => {
-      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue({ id: 'u1', email: 'e' } as any);
-      vi.spyOn(tokenService, 'generateResetPasswordToken').mockResolvedValue('reset-token');
+      vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue({
+        id: 'u1',
+        email: 'e',
+      } as any);
+      vi.spyOn(tokenService, 'generateResetPasswordToken').mockResolvedValue(
+        'reset-token',
+      );
 
       const result = await authService.forgotPassword({ email: 'e' }, 'u1');
 
@@ -216,17 +235,26 @@ describe('AuthService', () => {
 
   describe('resetPassword', () => {
     it('should hash new password, update db, and revoke tokens', async () => {
-      vi.spyOn(tokenService, 'verifyResetPasswordToken').mockResolvedValue({ userId: 'u1' } as any);
+      vi.spyOn(tokenService, 'verifyResetPasswordToken').mockResolvedValue({
+        userId: 'u1',
+      } as any);
       vi.mocked(bcrypt.hash).mockResolvedValue('new_hash' as never);
 
-      await authService.resetPassword('reset-token', { newPassword: 'NewPassword123!' });
+      await authService.resetPassword('reset-token', {
+        newPassword: 'NewPassword123!',
+      });
 
-      expect(bcrypt.hash).toHaveBeenCalledWith('NewPassword123!', expect.any(Number));
+      expect(bcrypt.hash).toHaveBeenCalledWith(
+        'NewPassword123!',
+        expect.any(Number),
+      );
       expect(prismaService.user.update).toHaveBeenCalledWith({
         where: { id: 'u1' },
         data: { passwordHash: 'new_hash' },
       });
-      expect(tokenService.deleteResetPasswordToken).toHaveBeenCalledWith('reset-token');
+      expect(tokenService.deleteResetPasswordToken).toHaveBeenCalledWith(
+        'reset-token',
+      );
       expect(tokenService.revokeAllRefreshTokens).toHaveBeenCalledWith('u1');
     });
   });
