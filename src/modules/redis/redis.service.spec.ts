@@ -56,7 +56,7 @@ describe('RedisService', () => {
     }).compile();
 
     redisService = module.get<RedisService>(RedisService);
-    
+
     // Replace dynamic timestamp to test accurately
     vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
   });
@@ -108,38 +108,57 @@ describe('RedisService', () => {
 
     it('should set chat session correctly across multiple keys', async () => {
       await redisService.setChatSession('chat-1', mockSessionData);
-      
+
       expect(mockRedis.setex).toHaveBeenCalledTimes(3);
       expect(mockRedis.setex).toHaveBeenCalledWith(
         `${REDIS_KEY_PREFIX.CHAT_SESSION}:chat-1`,
         REDIS_TTL.CHAT_SESSION,
-        JSON.stringify(mockSessionData)
+        JSON.stringify(mockSessionData),
       );
       expect(mockRedis.setex).toHaveBeenCalledWith(
         `${REDIS_KEY_PREFIX.CHAT_USER}:user-1`,
         REDIS_TTL.CHAT_SESSION,
-        'chat-1'
+        'chat-1',
       );
     });
 
     it('should cache message and trim list', async () => {
-      const msg = { id: 'msg-1', senderId: 'u1', content: 'hello', timestamp: Date.now() };
+      const msg = {
+        id: 'msg-1',
+        senderId: 'u1',
+        content: 'hello',
+        timestamp: Date.now(),
+      };
       await redisService.cacheMessage('chat-1', msg);
 
       const key = `${REDIS_KEY_PREFIX.CHAT_MESSAGES}:chat-1`;
       expect(mockRedis.lpush).toHaveBeenCalledWith(key, JSON.stringify(msg));
-      expect(mockRedis.ltrim).toHaveBeenCalledWith(key, 0, REDIS_LIMITS.MAX_CACHED_MESSAGES - 1);
-      expect(mockRedis.expire).toHaveBeenCalledWith(key, REDIS_TTL.CHAT_MESSAGES_CACHE);
+      expect(mockRedis.ltrim).toHaveBeenCalledWith(
+        key,
+        0,
+        REDIS_LIMITS.MAX_CACHED_MESSAGES - 1,
+      );
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        key,
+        REDIS_TTL.CHAT_MESSAGES_CACHE,
+      );
     });
 
     it('should parse and reverse cached messages', async () => {
       const msg1 = { id: 'msg-1' };
       const msg2 = { id: 'msg-2' };
-      mockRedis.lrange.mockResolvedValue([JSON.stringify(msg2), JSON.stringify(msg1)]);
+      mockRedis.lrange.mockResolvedValue([
+        JSON.stringify(msg2),
+        JSON.stringify(msg1),
+      ]);
 
       const result = await redisService.getCachedMessages('chat-1', 10);
-      
-      expect(mockRedis.lrange).toHaveBeenCalledWith(`${REDIS_KEY_PREFIX.CHAT_MESSAGES}:chat-1`, 0, 9);
+
+      expect(mockRedis.lrange).toHaveBeenCalledWith(
+        `${REDIS_KEY_PREFIX.CHAT_MESSAGES}:chat-1`,
+        0,
+        9,
+      );
       expect(result).toEqual([msg1, msg2]); // Reversed
     });
   });
@@ -171,9 +190,16 @@ describe('RedisService', () => {
     it('should add user to venue sets correctly', async () => {
       await redisService.addUserToVenue('user-1', 'venue-1');
 
-      expect(mockRedis.sadd).toHaveBeenCalledWith('venue:venue-1:users', 'user-1');
+      expect(mockRedis.sadd).toHaveBeenCalledWith(
+        'venue:venue-1:users',
+        'user-1',
+      );
       expect(mockRedis.sadd).toHaveBeenCalledWith('active_venues', 'venue-1');
-      expect(mockRedis.setex).toHaveBeenCalledWith(`user:user-1:venue`, REDIS_TTL.VENUE_PRESENCE, 'venue-1');
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        `user:user-1:venue`,
+        REDIS_TTL.VENUE_PRESENCE,
+        'venue-1',
+      );
     });
 
     it('should remove user from venue and clean up active venues if empty', async () => {
@@ -181,31 +207,43 @@ describe('RedisService', () => {
 
       await redisService.removeUserFromVenue('user-1', 'venue-1');
 
-      expect(mockRedis.srem).toHaveBeenCalledWith('venue:venue-1:users', 'user-1');
+      expect(mockRedis.srem).toHaveBeenCalledWith(
+        'venue:venue-1:users',
+        'user-1',
+      );
       expect(mockRedis.del).toHaveBeenCalledWith('user:user-1:venue');
       // Called because scard is 0
-      expect(mockRedis.srem).toHaveBeenCalledWith('active_venues', 'venue-1'); 
+      expect(mockRedis.srem).toHaveBeenCalledWith('active_venues', 'venue-1');
     });
   });
 
   describe('Profile Caching', () => {
     it('should stringify and cache profile', async () => {
-      await redisService.cacheProfile('user-1', { id: 'user-1', firstName: 'Test' } as any);
+      await redisService.cacheProfile('user-1', {
+        id: 'user-1',
+        firstName: 'Test',
+      } as any);
       expect(mockRedis.setex).toHaveBeenCalledWith(
         'profile:user-1',
         REDIS_TTL.PROFILE_CACHE,
-        JSON.stringify({ id: 'user-1', firstName: 'Test' })
+        JSON.stringify({ id: 'user-1', firstName: 'Test' }),
       );
     });
   });
 
   describe('General Cache Operations', () => {
     it('should invalidate specific pattern keys', async () => {
-      mockRedis.keys.mockResolvedValue(['cache:vibrate:user-1', 'cache:vibrate:user-2']);
+      mockRedis.keys.mockResolvedValue([
+        'cache:vibrate:user-1',
+        'cache:vibrate:user-2',
+      ]);
       await redisService.cacheInvalidatePattern('vibrate:*');
 
       expect(mockRedis.keys).toHaveBeenCalledWith('cache:vibrate:*');
-      expect(mockRedis.del).toHaveBeenCalledWith('cache:vibrate:user-1', 'cache:vibrate:user-2');
+      expect(mockRedis.del).toHaveBeenCalledWith(
+        'cache:vibrate:user-1',
+        'cache:vibrate:user-2',
+      );
     });
   });
 });
