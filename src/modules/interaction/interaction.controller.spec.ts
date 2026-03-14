@@ -27,7 +27,9 @@ describe('InteractionController', () => {
       ],
     }).compile();
 
-    interactionController = module.get<InteractionController>(InteractionController);
+    interactionController = module.get<InteractionController>(
+      InteractionController,
+    );
     interactionService = module.get<InteractionService>(InteractionService);
 
     vi.clearAllMocks();
@@ -44,24 +46,40 @@ describe('InteractionController', () => {
 
     it('should return LIKE_SUCCESS message when no match', async () => {
       const mockResult = { matched: false, likeId: 'like-1' };
-      vi.spyOn(interactionService, 'likeUser').mockResolvedValue(mockResult as any);
+      vi.spyOn(interactionService, 'likeUser').mockResolvedValue(
+        mockResult as any,
+      );
 
       const result = await interactionController.likeUser('user-1', likeDto);
 
-      expect(interactionService.likeUser).toHaveBeenCalledWith('user-1', 'user-2', 'venue-1');
+      expect(interactionService.likeUser).toHaveBeenCalledWith(
+        'user-1',
+        'user-2',
+        'venue-1',
+      );
       expect(result).toEqual(
-        ResponseBuilder.success(mockResult, INTERACTION_MESSAGES.LIKE_SUCCESS, HttpStatus.CREATED),
+        ResponseBuilder.success(
+          mockResult,
+          INTERACTION_MESSAGES.LIKE_SUCCESS,
+          HttpStatus.CREATED,
+        ),
       );
     });
 
     it('should return MATCH_FOUND message when mutual match', async () => {
       const mockResult = { matched: true, chatSessionId: 'chat-1' };
-      vi.spyOn(interactionService, 'likeUser').mockResolvedValue(mockResult as any);
+      vi.spyOn(interactionService, 'likeUser').mockResolvedValue(
+        mockResult as any,
+      );
 
       const result = await interactionController.likeUser('user-1', likeDto);
 
       expect(result).toEqual(
-        ResponseBuilder.success(mockResult, INTERACTION_MESSAGES.MATCH_FOUND, HttpStatus.CREATED),
+        ResponseBuilder.success(
+          mockResult,
+          INTERACTION_MESSAGES.MATCH_FOUND,
+          HttpStatus.CREATED,
+        ),
       );
     });
   });
@@ -70,32 +88,51 @@ describe('InteractionController', () => {
     it('should unlike user and return success', async () => {
       const result = await interactionController.unlikeUser('user-1', 'user-2');
 
-      expect(interactionService.unlikeUser).toHaveBeenCalledWith('user-1', 'user-2');
-      expect(result).toEqual(ResponseBuilder.success(null, INTERACTION_MESSAGES.UNLIKE_SUCCESS));
+      expect(interactionService.unlikeUser).toHaveBeenCalledWith(
+        'user-1',
+        'user-2',
+      );
+      expect(result).toEqual(
+        ResponseBuilder.success(null, INTERACTION_MESSAGES.UNLIKE_SUCCESS),
+      );
     });
   });
 
   describe('getMyLikes', () => {
     it('should return list of liked users', async () => {
       const mockLikes = [{ id: 'user-2', firstName: 'Jane' }];
-      vi.spyOn(interactionService, 'getMyLikes').mockResolvedValue(mockLikes as any);
+      vi.spyOn(interactionService, 'getMyLikes').mockResolvedValue(
+        mockLikes as any,
+      );
 
       const result = await interactionController.getMyLikes('user-1');
 
       expect(interactionService.getMyLikes).toHaveBeenCalledWith('user-1');
-      expect(result).toEqual(ResponseBuilder.success(mockLikes, INTERACTION_MESSAGES.MY_LIKES_RETRIEVED));
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockLikes,
+          INTERACTION_MESSAGES.MY_LIKES_RETRIEVED,
+        ),
+      );
     });
   });
 
   describe('getLikedMe', () => {
     it('should return list of users who liked me', async () => {
       const mockLikedMe = [{ id: 'user-3', firstName: 'Bob' }];
-      vi.spyOn(interactionService, 'getLikedMe').mockResolvedValue(mockLikedMe as any);
+      vi.spyOn(interactionService, 'getLikedMe').mockResolvedValue(
+        mockLikedMe as any,
+      );
 
       const result = await interactionController.getLikedMe('user-1');
 
       expect(interactionService.getLikedMe).toHaveBeenCalledWith('user-1');
-      expect(result).toEqual(ResponseBuilder.success(mockLikedMe, INTERACTION_MESSAGES.LIKED_ME_RETRIEVED));
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockLikedMe,
+          INTERACTION_MESSAGES.LIKED_ME_RETRIEVED,
+        ),
+      );
     });
   });
 });
