@@ -26,7 +26,8 @@ describe('PreferenceController', () => {
       ],
     }).compile();
 
-    preferenceController = module.get<PreferenceController>(PreferenceController);
+    preferenceController =
+      module.get<PreferenceController>(PreferenceController);
     preferenceService = module.get<PreferenceService>(PreferenceService);
 
     vi.clearAllMocks();
@@ -46,7 +47,10 @@ describe('PreferenceController', () => {
 
       expect(preferenceService.exists).toHaveBeenCalledWith('user-1');
       expect(result).toEqual(
-        ResponseBuilder.success({ exists: true }, PREFERENCE_MESSAGES.PREFERENCE_EXISTS),
+        ResponseBuilder.success(
+          { exists: true },
+          PREFERENCE_MESSAGES.PREFERENCE_EXISTS,
+        ),
       );
     });
 
@@ -56,20 +60,32 @@ describe('PreferenceController', () => {
       const result = await preferenceController.checkExists('user-1');
 
       expect(result).toEqual(
-        ResponseBuilder.success({ exists: false }, PREFERENCE_MESSAGES.PREFERENCE_EXISTS),
+        ResponseBuilder.success(
+          { exists: false },
+          PREFERENCE_MESSAGES.PREFERENCE_EXISTS,
+        ),
       );
     });
   });
 
   describe('getMyPreferences', () => {
     it('should return preferences successfully', async () => {
-      const mockPref = { id: 'pref-1', userId: 'user-1', minAge: 20, maxAge: 30 };
-      vi.spyOn(preferenceService, 'getMyPreferences').mockResolvedValue(mockPref as any);
+      const mockPref = {
+        id: 'pref-1',
+        userId: 'user-1',
+        minAge: 20,
+        maxAge: 30,
+      };
+      vi.spyOn(preferenceService, 'getMyPreferences').mockResolvedValue(
+        mockPref as any,
+      );
 
       const result = await preferenceController.getMyPreferences('user-1');
 
       expect(preferenceService.getMyPreferences).toHaveBeenCalledWith('user-1');
-      expect(result).toEqual(ResponseBuilder.success(mockPref, PREFERENCE_MESSAGES.PREFERENCE_FOUND));
+      expect(result).toEqual(
+        ResponseBuilder.success(mockPref, PREFERENCE_MESSAGES.PREFERENCE_FOUND),
+      );
     });
   });
 
@@ -77,12 +93,25 @@ describe('PreferenceController', () => {
     it('should update and return new preferences', async () => {
       const dto: any = { minAge: 20, maxAge: 30 };
       const mockPref = { id: 'pref-1', userId: 'user-1', ...dto };
-      vi.spyOn(preferenceService, 'upsertPreferences').mockResolvedValue(mockPref as any);
+      vi.spyOn(preferenceService, 'upsertPreferences').mockResolvedValue(
+        mockPref as any,
+      );
 
-      const result = await preferenceController.upsertPreferences('user-1', dto);
+      const result = await preferenceController.upsertPreferences(
+        'user-1',
+        dto,
+      );
 
-      expect(preferenceService.upsertPreferences).toHaveBeenCalledWith('user-1', dto);
-      expect(result).toEqual(ResponseBuilder.success(mockPref, PREFERENCE_MESSAGES.PREFERENCE_UPDATED));
+      expect(preferenceService.upsertPreferences).toHaveBeenCalledWith(
+        'user-1',
+        dto,
+      );
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockPref,
+          PREFERENCE_MESSAGES.PREFERENCE_UPDATED,
+        ),
+      );
     });
   });
 
@@ -90,8 +119,12 @@ describe('PreferenceController', () => {
     it('should delete preferences successfully', async () => {
       const result = await preferenceController.deletePreferences('user-1');
 
-      expect(preferenceService.deletePreferences).toHaveBeenCalledWith('user-1');
-      expect(result).toEqual(ResponseBuilder.success(null, PREFERENCE_MESSAGES.PREFERENCE_DELETED));
+      expect(preferenceService.deletePreferences).toHaveBeenCalledWith(
+        'user-1',
+      );
+      expect(result).toEqual(
+        ResponseBuilder.success(null, PREFERENCE_MESSAGES.PREFERENCE_DELETED),
+      );
     });
   });
 });
