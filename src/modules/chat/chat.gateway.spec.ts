@@ -77,7 +77,9 @@ describe('ChatGateway', () => {
     chatGateway = module.get<ChatGateway>(ChatGateway);
     chatService = module.get<ChatService>(ChatService);
     redisService = module.get<RedisService>(RedisService);
-    wsRateLimitMiddleware = module.get<WsRateLimitMiddleware>(WsRateLimitMiddleware);
+    wsRateLimitMiddleware = module.get<WsRateLimitMiddleware>(
+      WsRateLimitMiddleware,
+    );
 
     // Mock Socket.io Server and Client
     mockServer = {
@@ -108,64 +110,98 @@ describe('ChatGateway', () => {
 
   describe('handleConnection', () => {
     it('should register socket in Redis and emit success if no auto-join', async () => {
-      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(null);
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        null,
+      );
 
       await chatGateway.handleConnection(mockClient);
 
-      expect(redisService.setUserSocket).toHaveBeenCalledWith('user-1', 'socket-123');
-      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.CHAT_JOINED, expect.objectContaining({
-        message: 'Connected to chat service',
-      }));
+      expect(redisService.setUserSocket).toHaveBeenCalledWith(
+        'user-1',
+        'socket-123',
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.CHAT_JOINED,
+        expect.objectContaining({
+          message: 'Connected to chat service',
+        }),
+      );
     });
 
     it('should auto-join existing chat on connection if active session exists', async () => {
-      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue('chat-1');
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        'chat-1',
+      );
       vi.spyOn(chatService, 'getMessages').mockResolvedValue([]);
       vi.spyOn(chatService, 'getChatSession').mockResolvedValue({} as any);
 
       await chatGateway.handleConnection(mockClient);
 
       expect(mockClient.join).toHaveBeenCalledWith('chat:chat-1');
-      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.CHAT_JOINED, expect.objectContaining({
-        chatSessionId: 'chat-1',
-        reconnected: true,
-      }));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.CHAT_JOINED,
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          reconnected: true,
+        }),
+      );
     });
   });
 
   describe('handleJoinChat', () => {
     it('should join the correct room and emit messages', async () => {
       vi.spyOn(chatService, 'validateParticipant').mockResolvedValue(undefined);
-      vi.spyOn(chatService, 'getMessages').mockResolvedValue([{ id: 'msg-1' }] as any);
-      vi.spyOn(chatService, 'getChatSession').mockResolvedValue({ id: 'chat-1' } as any);
+      vi.spyOn(chatService, 'getMessages').mockResolvedValue([
+        { id: 'msg-1' },
+      ] as any);
+      vi.spyOn(chatService, 'getChatSession').mockResolvedValue({
+        id: 'chat-1',
+      } as any);
 
       await chatGateway.handleJoinChat(mockClient, { chatSessionId: 'chat-1' });
 
-      expect(chatService.validateParticipant).toHaveBeenCalledWith('chat-1', 'user-1');
+      expect(chatService.validateParticipant).toHaveBeenCalledWith(
+        'chat-1',
+        'user-1',
+      );
       expect(mockClient.join).toHaveBeenCalledWith('chat:chat-1');
-      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.CHAT_JOINED, expect.objectContaining({
-        chatSessionId: 'chat-1',
-        messages: [{ id: 'msg-1' }],
-      }));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.CHAT_JOINED,
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          messages: [{ id: 'msg-1' }],
+        }),
+      );
     });
 
     it('should emit error if user is not participant', async () => {
-      vi.spyOn(chatService, 'validateParticipant').mockRejectedValue(new Error('Not found'));
+      vi.spyOn(chatService, 'validateParticipant').mockRejectedValue(
+        new Error('Not found'),
+      );
 
       await chatGateway.handleJoinChat(mockClient, { chatSessionId: 'chat-1' });
 
-      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, { message: 'Not found' });
+      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, {
+        message: 'Not found',
+      });
     });
   });
 
   describe('handleSendMessage', () => {
     it('should not send message if rate limit exceeded', async () => {
-      vi.spyOn(wsRateLimitMiddleware, 'checkEventRateLimit').mockResolvedValue(false);
+      vi.spyOn(wsRateLimitMiddleware, 'checkEventRateLimit').mockResolvedValue(
+        false,
+      );
 
-      await chatGateway.handleSendMessage(mockClient, { chatSessionId: 'chat-1', content: 'hello' });
+      await chatGateway.handleSendMessage(mockClient, {
+        chatSessionId: 'chat-1',
+        content: 'hello',
+      });
 
       expect(chatService.sendMessage).not.toHaveBeenCalled();
-      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, { message: 'Rate limit exceeded. Please slow down!' });
+      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, {
+        message: 'Rate limit exceeded. Please slow down!',
+      });
     });
 
     it('should broadcast message to chat room on success', async () => {
@@ -177,7 +213,10 @@ describe('ChatGateway', () => {
         createdAt: new Date(),
       } as any);
 
-      await chatGateway.handleSendMessage(mockClient, { chatSessionId: 'chat-1', content: 'hello' });
+      await chatGateway.handleSendMessage(mockClient, {
+        chatSessionId: 'chat-1',
+        content: 'hello',
+      });
 
       expect(chatService.sendMessage).toHaveBeenCalledWith({
         chatSessionId: 'chat-1',
@@ -186,10 +225,13 @@ describe('ChatGateway', () => {
       });
       // Verifies server.to('chat:chat-1').emit(...)
       expect(mockServer.to).toHaveBeenCalledWith('chat:chat-1');
-      expect(mockServer.emit).toHaveBeenCalledWith(CHAT_EVENTS.MESSAGE, expect.objectContaining({
-        id: 'msg-1',
-        content: 'hello',
-      }));
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.MESSAGE,
+        expect.objectContaining({
+          id: 'msg-1',
+          content: 'hello',
+        }),
+      );
     });
   });
 
@@ -197,7 +239,10 @@ describe('ChatGateway', () => {
     it('should broadcast typing status to partner', async () => {
       vi.spyOn(chatService, 'validateParticipant').mockResolvedValue();
 
-      await chatGateway.handleTyping(mockClient, { chatSessionId: 'chat-1', isTyping: true });
+      await chatGateway.handleTyping(mockClient, {
+        chatSessionId: 'chat-1',
+        isTyping: true,
+      });
 
       expect(mockClient.to).toHaveBeenCalledWith('chat:chat-1');
       expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.PARTNER_TYPING, {
@@ -215,10 +260,13 @@ describe('ChatGateway', () => {
 
       expect(chatService.endChat).toHaveBeenCalledWith('chat-1', 'user-1');
       expect(mockServer.to).toHaveBeenCalledWith('chat:chat-1');
-      expect(mockServer.emit).toHaveBeenCalledWith(CHAT_EVENTS.CHAT_ENDED, expect.objectContaining({
-        chatSessionId: 'chat-1',
-        endedBy: 'user-1',
-      }));
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.CHAT_ENDED,
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          endedBy: 'user-1',
+        }),
+      );
     });
   });
 
@@ -247,12 +295,18 @@ describe('ChatGateway', () => {
 
       await chatGateway.notifyMatch('user-1', 'user-2', matchData);
 
-      expect(mockUser1Socket.emit).toHaveBeenCalledWith(CHAT_EVENTS.MATCH_FOUND, expect.objectContaining({
-        partner: matchData.user2
-      }));
-      expect(mockUser2Socket.emit).toHaveBeenCalledWith(CHAT_EVENTS.MATCH_FOUND, expect.objectContaining({
-        partner: matchData.user1
-      }));
+      expect(mockUser1Socket.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.MATCH_FOUND,
+        expect.objectContaining({
+          partner: matchData.user2,
+        }),
+      );
+      expect(mockUser2Socket.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.MATCH_FOUND,
+        expect.objectContaining({
+          partner: matchData.user1,
+        }),
+      );
     });
   });
 });
