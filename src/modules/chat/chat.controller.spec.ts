@@ -40,25 +40,44 @@ describe('ChatController', () => {
         { id: 'session-1', status: 'ACTIVE' },
         { id: 'session-2', status: 'ACTIVE' },
       ];
-      vi.spyOn(chatService, 'getMyChatSessions').mockResolvedValue(mockSessions as any);
+      vi.spyOn(chatService, 'getMyChatSessions').mockResolvedValue(
+        mockSessions as any,
+      );
 
       const result = await chatController.getMyChatSessions('user-1');
 
-      expect(chatService.getMyChatSessions).toHaveBeenCalledWith('user-1', undefined);
+      expect(chatService.getMyChatSessions).toHaveBeenCalledWith(
+        'user-1',
+        undefined,
+      );
       expect(result).toEqual(
-        ResponseBuilder.success(mockSessions, 'Chat sessions retrieved successfully'),
+        ResponseBuilder.success(
+          mockSessions,
+          'Chat sessions retrieved successfully',
+        ),
       );
     });
 
     it('should pass optional venueId filter to ChatService', async () => {
       const mockSessions = [{ id: 'session-1', status: 'ACTIVE' }];
-      vi.spyOn(chatService, 'getMyChatSessions').mockResolvedValue(mockSessions as any);
+      vi.spyOn(chatService, 'getMyChatSessions').mockResolvedValue(
+        mockSessions as any,
+      );
 
-      const result = await chatController.getMyChatSessions('user-1', 'venue-1');
+      const result = await chatController.getMyChatSessions(
+        'user-1',
+        'venue-1',
+      );
 
-      expect(chatService.getMyChatSessions).toHaveBeenCalledWith('user-1', 'venue-1');
+      expect(chatService.getMyChatSessions).toHaveBeenCalledWith(
+        'user-1',
+        'venue-1',
+      );
       expect(result).toEqual(
-        ResponseBuilder.success(mockSessions, 'Chat sessions retrieved successfully'),
+        ResponseBuilder.success(
+          mockSessions,
+          'Chat sessions retrieved successfully',
+        ),
       );
     });
 
