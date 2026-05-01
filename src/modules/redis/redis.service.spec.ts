@@ -230,20 +230,4 @@ describe('RedisService', () => {
       );
     });
   });
-
-  describe('General Cache Operations', () => {
-    it('should invalidate specific pattern keys', async () => {
-      mockRedis.keys.mockResolvedValue([
-        'cache:vibrate:user-1',
-        'cache:vibrate:user-2',
-      ]);
-      await redisService.cacheInvalidatePattern('vibrate:*');
-
-      expect(mockRedis.keys).toHaveBeenCalledWith('cache:vibrate:*');
-      expect(mockRedis.del).toHaveBeenCalledWith(
-        'cache:vibrate:user-1',
-        'cache:vibrate:user-2',
-      );
-    });
-  });
 });

@@ -122,6 +122,7 @@ describe('PresenceGateway', () => {
       await presenceGateway.handleDisconnect(mockClient);
       expect(presenceService.handleUserDisconnection).toHaveBeenCalledWith(
         mockClient,
+        expect.anything(),
       );
     });
   });
@@ -129,7 +130,19 @@ describe('PresenceGateway', () => {
   describe('handleHeartbeat', () => {
     it('should delegate heartbeat to presenceService', async () => {
       await presenceGateway.handleHeartbeat(mockClient);
-      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(mockClient);
+      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(
+        mockClient,
+        undefined,
+      );
+    });
+
+    it('should forward optional coordinate payload', async () => {
+      const payload = { latitude: 41.0, longitude: 28.0 };
+      await presenceGateway.handleHeartbeat(mockClient, payload);
+      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(
+        mockClient,
+        payload,
+      );
     });
   });
 

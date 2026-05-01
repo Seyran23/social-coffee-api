@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { PrismaService } from '@/database/prisma.service';
 import { WS_EVENTS } from '@/modules/presence/constants/ws-event-namings';
 import { PresenceService } from '@/modules/presence/presence.service';
 import { ProfileService } from '@/modules/profile/profile.service';
@@ -45,6 +46,12 @@ describe('PresenceService', () => {
             warn: vi.fn(),
             debug: vi.fn(),
             setContext: vi.fn(),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            venue: { findUnique: vi.fn() },
           },
         },
       ],
@@ -128,10 +135,14 @@ describe('PresenceService', () => {
   });
 
   describe('handleUserDisconnection', () => {
+    const mockServer = {
+      to: vi.fn().mockReturnValue({ emit: vi.fn() }),
+    } as any;
+
     it('should start a disconnection grace period timer', () => {
       mockClient.venue = { id: 'venue-1' };
 
-      presenceService.handleUserDisconnection(mockClient);
+      presenceService.handleUserDisconnection(mockClient, mockServer);
 
       expect(setTimeout).toHaveBeenCalled();
     });
@@ -139,11 +150,11 @@ describe('PresenceService', () => {
     it('should clear old timer if disconnecting again', () => {
       mockClient.venue = { id: 'venue-1' };
 
-      presenceService.handleUserDisconnection(mockClient);
+      presenceService.handleUserDisconnection(mockClient, mockServer);
       const firstCallCount = vi.mocked(clearTimeout).mock.calls.length;
 
       // Disconnect again should clear previous timer
-      presenceService.handleUserDisconnection(mockClient);
+      presenceService.handleUserDisconnection(mockClient, mockServer);
 
       expect(clearTimeout).toHaveBeenCalledTimes(firstCallCount + 1);
     });

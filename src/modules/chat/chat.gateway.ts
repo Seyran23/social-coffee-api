@@ -1,3 +1,4 @@
+import { Interval } from '@nestjs/schedule';
 import {
   ConnectedSocket,
   MessageBody,
@@ -27,12 +28,15 @@ import { RedisService } from '@/modules/redis/redis.service';
 @WebSocketGateway({
   namespace: '/chat',
   cors: {
-    origin: 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) ?? [
+      'http://localhost:5173',
+    ],
     credentials: true,
   },
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -44,10 +48,7 @@ export class ChatGateway
     private readonly wsRateLimitMiddleware: WsRateLimitMiddleware,
   ) {
     this.logger.setContext(ChatGateway.name);
-
-    this.startExpiryWarningJob();
   }
-
 
   afterInit(server: Server): void {
     this.logger.log('Chat Gateway initialized');
@@ -55,14 +56,13 @@ export class ChatGateway
     server.use(this.wsRateLimitMiddleware.useConnectionLimit());
     server.use(this.wsAuthMiddleware.use());
 
-    setInterval(() => {
-      this.wsRateLimitMiddleware.cleanup();
-    }, 60000);
-
     this.logger.log('Chat Gateway middlewares configured');
   }
 
-
+  @Interval('ws-rate-limit-cleanup', 60_000)
+  cleanupRateLimits(): void {
+    this.wsRateLimitMiddleware.cleanup();
+  }
 
   async handleConnection(client: AuthenticatedSocket) {
     const { userId, email } = client.user;
@@ -105,8 +105,6 @@ export class ChatGateway
       this.logger.error(`Disconnect cleanup error for user ${userId}:`, error);
     }
   }
-
-
 
   /**
    * Join chat room
@@ -239,53 +237,6 @@ export class ChatGateway
     }
   }
 
-
-  /**
-   * Notify both users of a mutual match via WebSocket
-   */
-  async notifyMatch(
-    user1Id: string,
-    user2Id: string,
-    matchData: {
-      chatSessionId: string;
-      venueId: string;
-      venueName: string;
-      expiresAt: Date;
-      user1: { id: string; firstName: string; lastName: string };
-      user2: { id: string; firstName: string; lastName: string };
-    },
-  ): Promise<void> {
-    const [user1Socket, user2Socket] = await Promise.all([
-      this.getUserSocket(user1Id),
-      this.getUserSocket(user2Id),
-    ]);
-
-    const basePayload = {
-      chatSessionId: matchData.chatSessionId,
-      venueId: matchData.venueId,
-      venueName: matchData.venueName,
-      expiresAt: matchData.expiresAt,
-      timestamp: Date.now(),
-    };
-
-    if (user1Socket) {
-      user1Socket.emit(CHAT_EVENTS.MATCH_FOUND, {
-        ...basePayload,
-        partner: matchData.user2,
-      });
-      this.logger.log(`Match notification sent to user ${user1Id}`);
-    }
-
-    if (user2Socket) {
-      user2Socket.emit(CHAT_EVENTS.MATCH_FOUND, {
-        ...basePayload,
-        partner: matchData.user1,
-      });
-      this.logger.log(`Match notification sent to user ${user2Id}`);
-    }
-  }
-
-
   /**
    * Auto-join active chat on reconnection
    */
@@ -377,31 +328,30 @@ export class ChatGateway
   }
 
   /**
-   * Start job to warn users about expiring chats
+   * Warn users when their chat is about to expire (runs every minute).
    */
-  private startExpiryWarningJob(): void {
-    setInterval(async () => {
-      try {
-        const expiringChats = await this.chatService.checkExpiringChats();
+  @Interval('chat-expiry-warning', 60_000)
+  async runExpiryWarningJob(): Promise<void> {
+    try {
+      const expiringChats = await this.chatService.checkExpiringChats();
 
-        for (const chat of expiringChats) {
-          this.server
-            .to(`chat:${chat.chatSessionId}`)
-            .emit(CHAT_EVENTS.SESSION_ENDING_SOON, {
-              chatSessionId: chat.chatSessionId,
-              minutesLeft: chat.minutesLeft,
-              message: `Your chat will expire in ${chat.minutesLeft} minute(s)`,
-              timestamp: Date.now(),
-            });
+      for (const chat of expiringChats) {
+        this.server
+          .to(`chat:${chat.chatSessionId}`)
+          .emit(CHAT_EVENTS.SESSION_ENDING_SOON, {
+            chatSessionId: chat.chatSessionId,
+            minutesLeft: chat.minutesLeft,
+            message: `Your chat will expire in ${chat.minutesLeft} minute(s)`,
+            timestamp: Date.now(),
+          });
 
-          this.logger.log(
-            `Warning sent for chat ${chat.chatSessionId} - ${chat.minutesLeft} minutes left`,
-          );
-        }
-      } catch (error) {
-        this.logger.error('Error in expiry warning job:', error);
+        this.logger.log(
+          `Warning sent for chat ${chat.chatSessionId} - ${chat.minutesLeft} minutes left`,
+        );
       }
-    }, 60000); // Check every minute
+    } catch (error) {
+      this.logger.error('Error in expiry warning job:', error);
+    }
   }
 
   private async checkRateLimit(

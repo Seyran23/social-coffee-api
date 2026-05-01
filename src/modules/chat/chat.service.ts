@@ -4,17 +4,47 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChatSessionStatus } from '@prisma/client';
+import { Interval } from '@nestjs/schedule';
+import {
+  ChatSession,
+  ChatSessionStatus,
+  Message,
+  Prisma,
+} from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { sanitizePlainText } from '@/common/utils/sanitize';
 import { PrismaService } from '@/database/prisma.service';
-import { DEFAULT_MESSAGE_LIMIT } from '@/modules/chat/constants/default-message-limit';
+import {
+  DEFAULT_MESSAGE_LIMIT,
+  MAX_MESSAGE_LIMIT,
+} from '@/modules/chat/constants/default-message-limit';
 import { CHAT_MESSAGES } from '@/modules/chat/constants/messages';
 import { ChatSessionResponseDto } from '@/modules/chat/dto/response/chat-session-response.dto';
 import { MessageResponseDto } from '@/modules/chat/dto/response/message-response.dto';
 import { ChatSessionWithRelations } from '@/modules/chat/interfaces/chat-with-relations.interface';
 import { MessagesOptions } from '@/modules/chat/interfaces/message-options.interface';
 import { RedisService } from '@/modules/redis/redis.service';
+
+// Common shape both Prisma sessions and Redis-cached sessions can satisfy.
+type SessionLikeForMapping = Pick<
+  ChatSession,
+  'id' | 'status' | 'user1Id' | 'user2Id'
+> & {
+  startedAt: Date | number | null;
+  expiresAt: Date | number | null;
+  user1?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+  user2?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+  venue?: { id: string; name: string };
+};
 
 @Injectable()
 export class ChatService {
@@ -24,8 +54,6 @@ export class ChatService {
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext(ChatService.name);
-
-    this.startExpiredChatCleanup();
   }
 
   async getChatSession(
@@ -77,8 +105,6 @@ export class ChatService {
     return this.mapToSessionResponse(session, userId);
   }
 
-  // Add this to your ChatService
-
   /**
    * Get user's active chat sessions (matches)
    */
@@ -86,7 +112,7 @@ export class ChatService {
     userId: string,
     venueId?: string,
   ): Promise<ChatSessionResponseDto[]> {
-    const where: any = {
+    const where: Prisma.ChatSessionWhereInput = {
       status: ChatSessionStatus.ACTIVE,
       OR: [{ user1Id: userId }, { user2Id: userId }],
     };
@@ -213,11 +239,16 @@ export class ChatService {
       throw new BadRequestException(CHAT_MESSAGES.CHAT_EXPIRED);
     }
 
+    const safeContent = sanitizePlainText(content);
+    if (!safeContent) {
+      throw new BadRequestException('Message content cannot be empty');
+    }
+
     const message = await this.database.message.create({
       data: {
         chatSessionId,
         senderId,
-        content,
+        content: safeContent,
       },
     });
 
@@ -242,9 +273,13 @@ export class ChatService {
   ): Promise<MessageResponseDto[]> {
     await this.validateParticipant(chatSessionId, userId);
 
-    const limit = options.limit ?? DEFAULT_MESSAGE_LIMIT;
+    const limit = Math.min(
+      Math.max(1, options.limit ?? DEFAULT_MESSAGE_LIMIT),
+      MAX_MESSAGE_LIMIT,
+    );
+    const cappedOptions: MessagesOptions = { ...options, limit };
 
-    if (!options.before) {
+    if (!cappedOptions.before) {
       const cachedMessages = await this.getCachedMessages(chatSessionId, limit);
 
       if (cachedMessages.length > 0) {
@@ -252,7 +287,7 @@ export class ChatService {
       }
     }
 
-    return this.fetchMessagesFromDatabase(chatSessionId, options);
+    return this.fetchMessagesFromDatabase(chatSessionId, cappedOptions);
   }
 
   async endChat(chatSessionId: string, userId: string): Promise<void> {
@@ -327,7 +362,7 @@ export class ChatService {
     chatSessionId: string,
     options: MessagesOptions,
   ): Promise<MessageResponseDto[]> {
-    const where: any = { chatSessionId };
+    const where: Prisma.MessageWhereInput = { chatSessionId };
 
     if (options.before) {
       where.createdAt = { lt: options.before };
@@ -378,7 +413,7 @@ export class ChatService {
   }
 
   private mapToSessionResponse(
-    session: any,
+    session: SessionLikeForMapping,
     currentUserId: string,
   ): ChatSessionResponseDto {
     const isUser1 = session.user1Id === currentUserId;
@@ -389,24 +424,47 @@ export class ChatService {
       throw new NotFoundException('Partner not found in chat session');
     }
 
+    if (!session.venue) {
+      throw new NotFoundException('Venue not found in chat session');
+    }
+
+    const startedAt = this.toDate(session.startedAt);
+    const expiresAt = this.toDate(session.expiresAt);
+
+    if (!startedAt || !expiresAt) {
+      throw new NotFoundException('Chat session timing is incomplete');
+    }
+
     return {
       id: session.id,
       status: session.status,
-      startedAt: session.startedAt,
-      expiresAt: session.expiresAt,
+      startedAt,
+      expiresAt,
       venue: {
         id: session.venue.id,
         name: session.venue.name,
       },
       partner: {
         id: partnerId,
-        firstName: partner.firstName,
-        lastName: partner.lastName,
+        firstName: partner.firstName ?? '',
+        lastName: partner.lastName ?? '',
       },
     };
   }
 
-  private mapToMessageResponse(message: any): MessageResponseDto {
+  private toDate(value: Date | number | null): Date | null {
+    if (value === null) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value;
+    }
+
+    return new Date(value);
+  }
+
+  private mapToMessageResponse(message: Message): MessageResponseDto {
     return {
       id: message.id,
       chatSessionId: message.chatSessionId,
@@ -444,50 +502,47 @@ export class ChatService {
     }));
   }
 
-  private startExpiredChatCleanup(): void {
-    setInterval(async () => {
-      try {
-        const now = new Date();
+  @Interval('expired-chat-cleanup', 60_000)
+  async cleanupExpiredChats(): Promise<void> {
+    try {
+      const now = new Date();
 
-        const expiredChats = await this.database.chatSession.findMany({
-          where: {
-            status: ChatSessionStatus.ACTIVE,
-            expiresAt: { lt: now },
-          },
-          select: {
-            id: true,
-            user1Id: true,
-            user2Id: true,
-          },
+      const expiredChats = await this.database.chatSession.findMany({
+        where: {
+          status: ChatSessionStatus.ACTIVE,
+          expiresAt: { lt: now },
+        },
+        select: {
+          id: true,
+          user1Id: true,
+          user2Id: true,
+        },
+      });
+
+      if (expiredChats.length === 0) {
+        return;
+      }
+
+      this.logger.log(`Found ${expiredChats.length} expired chat sessions`);
+
+      for (const chat of expiredChats) {
+        await this.database.chatSession.update({
+          where: { id: chat.id },
+          data: { status: ChatSessionStatus.EXPIRED },
         });
 
-        if (expiredChats.length === 0) {
-          return;
+        if (chat.user1Id && chat.user2Id) {
+          await this.redis.deleteChatSession(
+            chat.id,
+            chat.user1Id,
+            chat.user2Id,
+          );
         }
 
-        this.logger.log(`Found ${expiredChats.length} expired chat sessions`);
-
-        for (const chat of expiredChats) {
-          await this.database.chatSession.update({
-            where: { id: chat.id },
-            data: {
-              status: ChatSessionStatus.EXPIRED,
-            },
-          });
-
-          if (chat.user1Id && chat.user2Id) {
-            await this.redis.deleteChatSession(
-              chat.id,
-              chat.user1Id,
-              chat.user2Id,
-            );
-          }
-
-          this.logger.log(`Chat ${chat.id} expired and cleaned up`);
-        }
-      } catch (error) {
-        this.logger.error('Error in expired chat cleanup:', error);
+        this.logger.log(`Chat ${chat.id} expired and cleaned up`);
       }
-    }, 60000);
+    } catch (error) {
+      this.logger.error('Error in expired chat cleanup:', error);
+    }
   }
 }

@@ -44,7 +44,6 @@ export class RedisService implements OnModuleDestroy {
 
   // CHAT SESSION MANAGEMENT
 
-  // In RedisService
   async setChatSession(
     chatSessionId: string,
     data: {
@@ -76,16 +75,17 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
-  async getChatSession(chatSessionId: string): Promise<any | null> {
+  async getChatSession(
+    chatSessionId: string,
+  ): Promise<Record<string, unknown> | null> {
     const key = this.getChatSessionKey(chatSessionId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
   }
 
-  async getUserActiveChatSession(userId: string): Promise<string | null> {
+  getUserActiveChatSession(userId: string): Promise<string | null> {
     const key = this.getUserChatKey(userId);
-    const userActiveChatSession = await this.redis.get(key);
-    return userActiveChatSession;
+    return this.redis.get(key);
   }
 
   async deleteChatSession(
@@ -112,13 +112,14 @@ export class RedisService implements OnModuleDestroy {
     const key = this.getChatMessagesKey(chatSessionId);
 
     await this.redis.lpush(key, JSON.stringify(message));
-
     await this.redis.ltrim(key, 0, REDIS_LIMITS.MAX_CACHED_MESSAGES - 1);
-
     await this.redis.expire(key, REDIS_TTL.CHAT_MESSAGES_CACHE);
   }
 
-  async getCachedMessages(chatSessionId: string, limit = 50): Promise<any[]> {
+  async getCachedMessages(
+    chatSessionId: string,
+    limit = 50,
+  ): Promise<Record<string, unknown>[]> {
     const key = this.getChatMessagesKey(chatSessionId);
     const messages = await this.redis.lrange(key, 0, limit - 1);
     return messages.map(msg => JSON.parse(msg)).reverse();
@@ -139,15 +140,9 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
-  async getUserSocket(userId: string): Promise<string | null> {
+  getUserSocket(userId: string): Promise<string | null> {
     const key = this.getUserSocketKey(userId);
-    const userSocketId = await this.redis.get(key);
-    return userSocketId;
-  }
-
-  async getUserIdFromSocket(socketId: string): Promise<string | null> {
-    const userId = await this.redis.get(`socket:${socketId}`);
-    return userId;
+    return this.redis.get(key);
   }
 
   async deleteUserSocket(userId: string): Promise<void> {
@@ -201,23 +196,16 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  async getActiveVenueIds(): Promise<string[]> {
+  getActiveVenueIds(): Promise<string[]> {
     return this.redis.smembers('active_venues');
   }
 
-  async getUsersAtVenue(venueId: string): Promise<string[]> {
-    const users = await this.redis.smembers(`venue:${venueId}:users`);
-    return users;
+  getUsersAtVenue(venueId: string): Promise<string[]> {
+    return this.redis.smembers(`venue:${venueId}:users`);
   }
 
-  async getVenueUserCount(venueId: string): Promise<number> {
-    const venueUserCount = await this.redis.scard(`venue:${venueId}:users`);
-    return venueUserCount;
-  }
-
-  async getUserCurrentVenue(userId: string): Promise<string | null> {
-    const userCurrentVenue = await this.redis.get(`user:${userId}:venue`);
-    return userCurrentVenue;
+  getUserCurrentVenue(userId: string): Promise<string | null> {
+    return this.redis.get(`user:${userId}:venue`);
   }
 
   async isUserAtVenue(userId: string, venueId: string): Promise<boolean> {
@@ -245,27 +233,6 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.sadd(`user:${userId}:matches:unread`, chatSessionId);
   }
 
-  async removeUnreadMatch(
-    userId: string,
-    chatSessionId: string,
-  ): Promise<void> {
-    await this.redis.srem(`user:${userId}:matches:unread`, chatSessionId);
-  }
-
-  async getUnreadMatches(userId: string): Promise<string[]> {
-    const userUnreadMatches = await this.redis.smembers(
-      `user:${userId}:matches:unread`,
-    );
-    return userUnreadMatches;
-  }
-
-  async getUnreadMatchCount(userId: string): Promise<number> {
-    const userUnreadMatchesCount = await this.redis.scard(
-      `user:${userId}:matches:unread`,
-    );
-    return userUnreadMatchesCount;
-  }
-
   // PROFILE CACHING
 
   async cacheProfile(userId: string, profile: UserProfile): Promise<void> {
@@ -285,52 +252,7 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.del(`profile:${userId}`);
   }
 
-  // QR CODE MANAGEMENT
-
-  async storeQRToken(
-    venueId: string,
-    token: string,
-    ttl: number,
-  ): Promise<void> {
-    await this.redis.setex(`qr:${venueId}:${token}`, ttl, venueId);
-  }
-
-  async validateAndConsumeQR(venueId: string, token: string): Promise<boolean> {
-    const stored = await this.redis.get(`qr:${venueId}:${token}`);
-    if (stored) {
-      await this.redis.del(`qr:${venueId}:${token}`);
-      return true;
-    }
-    return false;
-  }
-
-  // TYPING INDICATORS
-
-  async setTyping(chatSessionId: string, userId: string): Promise<void> {
-    await this.redis.setex(
-      `typing:${chatSessionId}:${userId}`,
-      REDIS_TTL.TYPING_INDICATOR,
-      'true',
-    );
-  }
-
-  async isTyping(chatSessionId: string, userId: string): Promise<boolean> {
-    return !!(await this.redis.get(`typing:${chatSessionId}:${userId}`));
-  }
-
-  // STATISTICS & ANALYTICS
-
-  async incrementVenueVisits(venueId: string, date: string): Promise<void> {
-    const key = `stats:venue:${venueId}:visits:${date}`;
-    await this.redis.incr(key);
-    await this.redis.expire(key, REDIS_TTL.STATS_RETENTION);
-  }
-
-  async getVenueVisits(venueId: string, date: string): Promise<number> {
-    const key = `stats:venue:${venueId}:visits:${date}`;
-    const count = await this.redis.get(key);
-    return count ? parseInt(count) : 0;
-  }
+  // STATISTICS
 
   async trackMatch(venueId: string): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
@@ -339,42 +261,15 @@ export class RedisService implements OnModuleDestroy {
     await this.redis.expire(key, REDIS_TTL.STATS_RETENTION);
   }
 
-  async incrementVenueStats(
-    venueId: string,
-    field: string,
-    increment = 1,
-  ): Promise<void> {
-    await this.redis.hincrby(`venue:${venueId}:stats`, field, increment);
-  }
+  // HEALTH
 
-  async getVenueStats(venueId: string): Promise<Record<string, string>> {
-    const venueStatistics = await this.redis.hgetall(`venue:${venueId}:stats`);
-    return venueStatistics;
-  }
-
-  // CACHE OPERATIONS
-
-  async cacheSet(
-    key: string,
-    value: any,
-    ttlSeconds: number = REDIS_TTL.DEFAULT_CACHE,
-  ): Promise<void> {
-    await this.redis.setex(`cache:${key}`, ttlSeconds, JSON.stringify(value));
-  }
-
-  async cacheGet<T>(key: string): Promise<T | null> {
-    const data = await this.redis.get(`cache:${key}`);
-    return data ? JSON.parse(data) : null;
-  }
-
-  async cacheDelete(key: string): Promise<void> {
-    await this.redis.del(`cache:${key}`);
-  }
-
-  async cacheInvalidatePattern(pattern: string): Promise<void> {
-    const keys = await this.redis.keys(`cache:${pattern}`);
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
+  async ping(): Promise<boolean> {
+    try {
+      const result = await this.redis.ping();
+      return result === 'PONG';
+    } catch (error) {
+      this.logger.error('Redis ping failed', error);
+      return false;
     }
   }
 
@@ -398,20 +293,5 @@ export class RedisService implements OnModuleDestroy {
 
   private getUserSocketKey(userId: string): string {
     return `${REDIS_KEY_PREFIX.SOCKET_USER}:${userId}`;
-  }
-
-  async ping(): Promise<boolean> {
-    try {
-      const result = await this.redis.ping();
-      return result === 'PONG';
-    } catch (error) {
-      this.logger.error('Redis ping failed', error);
-      return false;
-    }
-  }
-
-  async getInfo(): Promise<any> {
-    const info = await this.redis.info();
-    return info;
   }
 }
