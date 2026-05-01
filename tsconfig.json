@@ -12,8 +12,15 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": true,
-    "strictBindCallApply": true,
+    "strict": true,
+    // DTOs use class-validator decorators without constructors; properties
+    // are populated by plainToClass at runtime. Disabling avoids spurious
+    // "no initializer" errors on every DTO class.
+    "strictPropertyInitialization": false,
+    // Many existing catch blocks rely on `error.message` directly.
+    // Re-enable later in a focused refactor that adds proper narrowing.
+    "useUnknownInCatchVariables": false,
+    "noImplicitReturns": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
