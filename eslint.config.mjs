@@ -33,6 +33,7 @@ export default [
     },
     rules: {
       // ===== TYPESCRIPT SPECIFIC RULES =====
+      'no-undef': 'off', // TypeScript handles undefined references; no-undef can't see TS global types
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-var-requires': 'error',

@@ -201,6 +201,7 @@ export class VenueController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.USER)
   @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Check-in to venue',
     description:

@@ -4,3 +4,6 @@ export const DEFAULT_PREFERENCES = {
   preferredGender: null,
   lookingFor: null,
 } as const;
+
+export const FEED_DEFAULT_LIMIT = 20;
+export const FEED_MAX_LIMIT = 100;

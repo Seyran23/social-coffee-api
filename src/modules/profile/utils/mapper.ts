@@ -1,8 +1,37 @@
+import { Prisma } from '@prisma/client';
+
 import { ProfileForFeed } from '@/modules/profile/types/profile-for-feed.type';
 import { UserProfile } from '@/modules/profile/types/user-profile.type';
 
-export const mapToProfile = (user: any) => {
-  const interests = user.userInterests?.map((ui: any) => ui.interest) ?? [];
+// Shape produced by `select: { ...PROFILE_SELECT, email: true }`.
+type UserWithProfileShape = Prisma.UserGetPayload<{
+  select: {
+    id: true;
+    firstName: true;
+    lastName: true;
+    email: true;
+    birthDate: true;
+    gender: true;
+    bio: true;
+    profileImageUrl: true;
+    createdAt: true;
+    updatedAt: true;
+    userInterests: {
+      include: { interest: { select: { id: true; name: true } } };
+    };
+    preference: {
+      select: {
+        minAge: true;
+        maxAge: true;
+        preferredGender: true;
+        lookingFor: true;
+      };
+    };
+  };
+}>;
+
+export const mapToProfile = (user: UserWithProfileShape) => {
+  const interests = user.userInterests?.map(ui => ui.interest) ?? [];
 
   return {
     id: user.id,

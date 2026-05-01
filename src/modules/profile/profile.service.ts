@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Gender, InteractionType } from '@prisma/client';
+import 'multer';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { sanitizePlainText } from '@/common/utils/sanitize';
 import { PrismaService } from '@/database/prisma.service';
 import {
   FILE_SIZE_LIMITS,
@@ -14,7 +16,11 @@ import {
 } from '@/modules/file-upload/constants/file-upload';
 import { UploadFolder } from '@/modules/file-upload/interfaces/upload-options.interface';
 import { FileUploadService } from '@/modules/file-upload/services/file-upload.service';
-import { DEFAULT_PREFERENCES } from '@/modules/profile/constants/defaults';
+import {
+  DEFAULT_PREFERENCES,
+  FEED_DEFAULT_LIMIT,
+  FEED_MAX_LIMIT,
+} from '@/modules/profile/constants/defaults';
 import { PROFILE_SELECT } from '@/modules/profile/constants/queries';
 import { UpdateProfileDto } from '@/modules/profile/dto/request/update-profile.dto';
 import { ProfilesForFeedPaginated } from '@/modules/profile/types/paginated-feed-profiles.type';
@@ -93,9 +99,9 @@ export class ProfileService {
     const user = await this.database.user.update({
       where: { id: userId },
       data: {
-        ...(dto.firstName && { firstName: dto.firstName }),
-        ...(dto.lastName && { lastName: dto.lastName }),
-        ...(dto.bio !== undefined && { bio: dto.bio }),
+        ...(dto.firstName && { firstName: sanitizePlainText(dto.firstName) }),
+        ...(dto.lastName && { lastName: sanitizePlainText(dto.lastName) }),
+        ...(dto.bio !== undefined && { bio: sanitizePlainText(dto.bio) }),
       },
       select: { ...PROFILE_SELECT, email: true },
     });
@@ -219,9 +225,11 @@ export class ProfileService {
 
   async discoverProfiles(
     userId: string,
-    limit = 20,
+    limit: number = FEED_DEFAULT_LIMIT,
     cursor?: string,
   ): Promise<ProfilesForFeedPaginated> {
+    const clampedLimit = Math.min(Math.max(1, limit), FEED_MAX_LIMIT);
+
     const venueId = await this.redis.getUserCurrentVenue(userId);
 
     this.logger.log(`[DISCOVER] User ${userId} at venue ${venueId ?? 'NONE'}`);
@@ -279,7 +287,7 @@ export class ProfileService {
       mapToProfileForFeed(profile),
     );
 
-    return this.paginateProfiles(discoveredProfiles, limit, cursor);
+    return this.paginateProfiles(discoveredProfiles, clampedLimit, cursor);
   }
 
   private async getFromCache(
@@ -303,9 +311,11 @@ export class ProfileService {
   private async fetchAndCacheProfiles(
     userIds: string[],
   ): Promise<UserProfile[]> {
+    // Include email so the cached profile shape matches the own-profile path
+    // (the per-user cache key may later be hit by getMyProfile which expects email).
     const users = await this.database.user.findMany({
       where: { id: { in: userIds }, deletedAt: null },
-      select: PROFILE_SELECT,
+      select: { ...PROFILE_SELECT, email: true },
     });
 
     const profiles: UserProfile[] = [];
@@ -346,8 +356,9 @@ export class ProfileService {
     if (activeChatSessionId) {
       const session = await this.redis.getChatSession(activeChatSessionId);
       if (session) {
-        const partnerId =
-          session.user1Id === userId ? session.user2Id : session.user1Id;
+        const user1Id = session.user1Id as string | undefined;
+        const user2Id = session.user2Id as string | undefined;
+        const partnerId = user1Id === userId ? user2Id : user1Id;
         if (partnerId) {
           excluded.add(partnerId);
         }
