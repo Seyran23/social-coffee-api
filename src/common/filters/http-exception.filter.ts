@@ -4,17 +4,21 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 import { ValidationErrorDto } from '@/common/dtos/response/validation-error-response.dto';
 import { ResponseBuilder } from '@/common/utils/response-builder';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
@@ -25,23 +29,34 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const exceptionResponse = exception.getResponse();
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
-        const responseObj = exceptionResponse as any;
+        const responseObj = exceptionResponse as Record<string, unknown>;
 
         if (Array.isArray(responseObj.message)) {
           message = 'Validation failed';
-          errors = this.formatValidationErrors(responseObj.message);
+          errors = this.formatValidationErrors(
+            responseObj.message as unknown[],
+          );
         } else {
-          message = responseObj.message ?? exception.message;
+          message = (responseObj.message as string) ?? exception.message;
 
           if (responseObj.errors) {
-            errors = responseObj.errors;
+            errors = responseObj.errors as ValidationErrorDto[];
           }
         }
       } else {
         message = String(exceptionResponse);
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      this.logger.error(
+        `Unhandled error on ${request.method} ${request.url}: ${exception.message}`,
+        exception.stack,
+      );
+      message = 'Internal server error';
+    } else {
+      this.logger.error(
+        `Unknown exception thrown on ${request.method} ${request.url}`,
+        String(exception),
+      );
     }
 
     const errorResponse = errors
@@ -51,7 +66,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json(errorResponse);
   }
 
-  private formatValidationErrors(messages: any[]): ValidationErrorDto[] {
+  private formatValidationErrors(messages: unknown[]): ValidationErrorDto[] {
     const errorMap = new Map<string, string[]>();
 
     messages.forEach(msg => {
@@ -65,7 +80,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   }
 
   private extractErrors(
-    error: any,
+    error: unknown,
     parentProperty: string,
     errorMap: Map<string, string[]>,
   ): void {
@@ -82,13 +97,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    if (error.property) {
-      const fullPath = parentProperty
-        ? `${parentProperty}.${error.property}`
-        : error.property;
+    const errObj = error as {
+      property?: string;
+      constraints?: Record<string, string>;
+      children?: unknown[];
+    };
 
-      if (error.constraints) {
-        const fieldErrors = Object.values(error.constraints) as string[];
+    if (errObj.property) {
+      const fullPath = parentProperty
+        ? `${parentProperty}.${errObj.property}`
+        : errObj.property;
+
+      if (errObj.constraints) {
+        const fieldErrors = Object.values(errObj.constraints);
 
         if (!errorMap.has(fullPath)) {
           errorMap.set(fullPath, []);
@@ -96,12 +117,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         errorMap.get(fullPath)!.push(...fieldErrors);
       }
 
-      if (
-        error.children &&
-        Array.isArray(error.children) &&
-        error.children.length > 0
-      ) {
-        error.children.forEach((child: any) => {
+      if (Array.isArray(errObj.children) && errObj.children.length > 0) {
+        errObj.children.forEach(child => {
           this.extractErrors(child, fullPath, errorMap);
         });
       }
