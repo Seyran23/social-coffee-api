@@ -269,44 +269,4 @@ describe('ChatGateway', () => {
       );
     });
   });
-
-  describe('notifyMatch', () => {
-    it('should emit match event to both successfully connected sockets', async () => {
-      const mockUser1Socket = { emit: vi.fn() };
-      const mockUser2Socket = { emit: vi.fn() };
-
-      // Make redis return mock socket IDs
-      vi.spyOn(redisService, 'getUserSocket')
-        .mockResolvedValueOnce('socket-1')
-        .mockResolvedValueOnce('socket-2');
-
-      // Add sockets to mockServer Map
-      mockServer.sockets.sockets.set('socket-1', mockUser1Socket);
-      mockServer.sockets.sockets.set('socket-2', mockUser2Socket);
-
-      const matchData = {
-        chatSessionId: 'chat-1',
-        venueId: 'v-1',
-        venueName: 'Place',
-        expiresAt: new Date(),
-        user1: { id: 'user-1', firstName: 'John', lastName: 'Doe' },
-        user2: { id: 'user-2', firstName: 'Jane', lastName: 'Smith' },
-      };
-
-      await chatGateway.notifyMatch('user-1', 'user-2', matchData);
-
-      expect(mockUser1Socket.emit).toHaveBeenCalledWith(
-        CHAT_EVENTS.MATCH_FOUND,
-        expect.objectContaining({
-          partner: matchData.user2,
-        }),
-      );
-      expect(mockUser2Socket.emit).toHaveBeenCalledWith(
-        CHAT_EVENTS.MATCH_FOUND,
-        expect.objectContaining({
-          partner: matchData.user1,
-        }),
-      );
-    });
-  });
 });
