@@ -79,6 +79,8 @@ model User {
   interactionsAsTarget Interaction[]  @relation("InteractionsAsTarget")
   tokens               Token[]        @relation("UserTokens")
 
+  @@index([deletedAt])
+  @@index([createdAt])
   @@map("users")
 }
 
@@ -131,6 +133,7 @@ model ChatSession {
   @@index([venueId])
   @@index([status])
   @@index([expiresAt])
+  @@index([status, expiresAt])
   @@map("chat_sessions")
 }
 
@@ -170,6 +173,7 @@ model Message {
 
   @@index([chatSessionId])
   @@index([senderId])
+  @@index([chatSessionId, createdAt])
   @@map("messages")
 }
 
