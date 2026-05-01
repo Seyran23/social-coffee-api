@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   SubscribeMessage,
@@ -13,13 +14,16 @@ import { AuthenticatedSocket } from '@/common/interfaces/websocket/authenticated
 import { LoggerService } from '@/common/logger/logger.service';
 import { WsAuthMiddleware } from '@/common/middleware/websocket-auth.middleware';
 import { WsRateLimitMiddleware } from '@/common/middleware/websocket-rate-limit.middleware';
+import { HeartbeatDto } from '@/modules/presence/dto/request/heartbeat.dto';
 import { PresenceService } from '@/modules/presence/presence.service';
 import { RedisService } from '@/modules/redis/redis.service';
 
 @WebSocketGateway({
   namespace: '/presence',
   cors: {
-    origin: 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) ?? [
+      'http://localhost:5173',
+    ],
     credentials: true,
   },
 })
@@ -61,20 +65,23 @@ export class PresenceGateway
     }
   }
 
-  async handleDisconnect(client: Socket) {
+  handleDisconnect(client: Socket) {
     const socket = client as AuthenticatedSocket;
 
     try {
-      await this.presenceService.handleUserDisconnection(socket);
+      this.presenceService.handleUserDisconnection(socket, this.server);
     } catch (error) {
       this.logger.error(`Disconnection handling failed:`, error.message);
     }
   }
 
   @SubscribeMessage('heartbeat')
-  async handleHeartbeat(@ConnectedSocket() client: Socket) {
+  async handleHeartbeat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload?: HeartbeatDto,
+  ) {
     const socket = client as AuthenticatedSocket;
-    await this.presenceService.handleHeartbeat(socket);
+    await this.presenceService.handleHeartbeat(socket, payload);
   }
 
   async broadcastUserJoined(userId: string, venueId: string): Promise<void> {
