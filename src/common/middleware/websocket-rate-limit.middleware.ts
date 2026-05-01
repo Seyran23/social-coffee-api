@@ -110,5 +110,4 @@ export class WsRateLimitMiddleware {
       this.logger.debug(`Cleaned up ${cleaned} rate limit entries`);
     }
   }
-  z;
 }

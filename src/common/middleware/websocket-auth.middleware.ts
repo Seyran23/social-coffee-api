@@ -18,9 +18,9 @@ export class WsAuthMiddleware {
   }
 
   use() {
-    return async (socket: AuthenticatedSocket, next: (err?: Error) => void) => {
+    return async (socket: Socket, next: (err?: Error) => void) => {
       try {
-        await this.authenticateSocket(socket);
+        await this.authenticateSocket(socket as AuthenticatedSocket);
 
         next();
       } catch (error) {

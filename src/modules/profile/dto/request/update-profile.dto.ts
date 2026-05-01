@@ -6,7 +6,6 @@ import {
   IsEnum,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -47,10 +46,12 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     example: ['clxxx123', 'clxxx456'],
-    description: 'Array of interest IDs to set (replaces all existing)',
+    description:
+      'Array of Interest IDs (CUIDs) to set; replaces all existing interests',
   })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
   interestIds?: string[];
 }

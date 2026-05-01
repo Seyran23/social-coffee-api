@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -71,6 +72,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Sign in to an existing account',
@@ -133,6 +135,7 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt')
   @HttpCode(HttpStatus.OK)
@@ -167,6 +170,7 @@ export class AuthController {
   }
 
   @Post('reset-password/:token')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Reset password using token',
