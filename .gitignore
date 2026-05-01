@@ -37,10 +37,17 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+.env.test
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+
+# Cryptographic material
+*.pem
+*.key
+*.cert
+*.crt
 
 # temp directory
 .temp
@@ -56,3 +63,7 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Stray vitest artifact (sometimes created inside src/modules/)
+src/modules/node_modules/
+src/modules/.vite/

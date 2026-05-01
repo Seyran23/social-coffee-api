@@ -1,1 +1,1 @@
-printf 'npx --no-install commitlint --edit "$1"\n' > .husky/commit-msg
+npx --no-install commitlint --edit "$1"
