@@ -131,7 +131,7 @@ export default [
 
   // Configuration for test files
   {
-    files: ['**/*.spec.ts', '**/*.test.ts', '**/*.e2e-spec.ts'],
+    files: ['**/*.spec.ts', '**/*.test.ts', '**/*.e2e-spec.ts', 'test/helpers/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
@@ -148,6 +148,7 @@ export default [
       'coverage/**',
       'prisma/migrations/**',
       '*.config.js',
+      '*.config.ts',
       '.next/**',
     ],
   },

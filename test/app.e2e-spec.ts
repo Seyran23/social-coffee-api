@@ -1,26 +1,51 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AppModule } from '@/app.module';
+import { closeApp, getApp } from './helpers/test-app.helper';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+describe('Application (e2e)', () => {
+  let app: INestApplication;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
+  beforeAll(async () => {
+    app = await getApp();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  afterAll(async () => {
+    await closeApp();
+  });
+
+  it('/health (GET) returns liveness payload', async () => {
+    // Health controller is excluded from the global 'api' prefix but URI
+    // versioning still applies, so the route is /v1/health.
+    const res = await request(app.getHttpServer())
+      .get('/v1/health')
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.uptime).toBeDefined();
+    expect(res.body.data.version).toBeDefined();
+  });
+
+  it('/health/live (GET) returns 200', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/health/live')
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.uptime).toBeDefined();
+  });
+
+  it('/health/ready (GET) reports DB + Redis status', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/health/ready')
+      .expect(200);
+
+    // The global ResponseInterceptor wraps the terminus payload under `data`.
+    // Terminus shape: { status: 'ok', info: { database: { status: 'up' }, redis: { ... } } }
+    const ready = res.body.data ?? res.body;
+    expect(ready.status).toBe('ok');
+    expect(ready.info.database.status).toBe('up');
+    expect(ready.info.redis.status).toBe('up');
   });
 });
