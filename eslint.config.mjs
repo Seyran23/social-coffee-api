@@ -133,6 +133,7 @@ export default [
   {
     files: ['**/*.spec.ts', '**/*.test.ts', '**/*.e2e-spec.ts', 'test/helpers/**/*.ts'],
     rules: {
+      'require-await': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       'no-console': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',

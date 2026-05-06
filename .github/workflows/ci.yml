@@ -28,6 +28,24 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ''
+      REDIS_DB: '0'
+      NODE_ENV: test
+      PORT: '8000'
+      CORS_ORIGIN: http://localhost:5173
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-32-chars-long
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-chars-long
+      JWT_RESET_PASSWORD_SECRET: ci-reset-pwd-secret-at-least-32-chars
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 30d
+      JWT_RESET_PASSWORD_EXPIRATION: 15m
+      CLOUDINARY_CLOUD_NAME: placeholder
+      CLOUDINARY_API_KEY: placeholder
+      CLOUDINARY_API_SECRET: placeholder
     steps:
       - uses: actions/checkout@v4
 
@@ -88,10 +106,10 @@ jobs:
       CORS_ORIGIN: http://localhost:5173
       JWT_ACCESS_SECRET: ci-access-secret-at-least-32-chars-long
       JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-chars-long
-      JWT_RESET_SECRET: ci-reset-secret-at-least-32-chars-long
+      JWT_RESET_PASSWORD_SECRET: ci-reset-pwd-secret-at-least-32-chars
       JWT_ACCESS_EXPIRATION: 15m
-      JWT_REFRESH_EXPIRATION: 7d
-      JWT_RESET_EXPIRATION: 1h
+      JWT_REFRESH_EXPIRATION: 30d
+      JWT_RESET_PASSWORD_EXPIRATION: 15m
       CLOUDINARY_CLOUD_NAME: placeholder
       CLOUDINARY_API_KEY: placeholder
       CLOUDINARY_API_SECRET: placeholder
