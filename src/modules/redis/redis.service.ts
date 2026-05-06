@@ -1,4 +1,5 @@
 import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ChatSessionStatus } from '@prisma/client';
 import Redis from 'ioredis';
 
 import { LoggerService } from '@/common/logger/logger.service';
@@ -6,6 +7,26 @@ import { UserProfile } from '@/modules/profile/types/user-profile.type';
 import { REDIS_LIMITS } from '@/modules/redis/constants/limits';
 import { REDIS_KEY_PREFIX } from '@/modules/redis/constants/prefixes';
 import { REDIS_TTL } from '@/modules/redis/constants/time-to-live';
+
+export interface CachedChatSession {
+  id: string;
+  user1Id: string;
+  user2Id: string;
+  venueId: string;
+  status: ChatSessionStatus;
+  startedAt: number;
+  expiresAt: number;
+  user1?: { id: string; firstName: string; lastName: string };
+  user2?: { id: string; firstName: string; lastName: string };
+  venue?: { id: string; name: string };
+}
+
+export interface CachedMessage {
+  id: string;
+  senderId: string;
+  content: string;
+  timestamp: number;
+}
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -77,7 +98,7 @@ export class RedisService implements OnModuleDestroy {
 
   async getChatSession(
     chatSessionId: string,
-  ): Promise<Record<string, unknown> | null> {
+  ): Promise<CachedChatSession | null> {
     const key = this.getChatSessionKey(chatSessionId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
@@ -119,7 +140,7 @@ export class RedisService implements OnModuleDestroy {
   async getCachedMessages(
     chatSessionId: string,
     limit = 50,
-  ): Promise<Record<string, unknown>[]> {
+  ): Promise<CachedMessage[]> {
     const key = this.getChatMessagesKey(chatSessionId);
     const messages = await this.redis.lrange(key, 0, limit - 1);
     return messages.map(msg => JSON.parse(msg)).reverse();

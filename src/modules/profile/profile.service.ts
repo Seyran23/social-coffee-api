@@ -356,9 +356,8 @@ export class ProfileService {
     if (activeChatSessionId) {
       const session = await this.redis.getChatSession(activeChatSessionId);
       if (session) {
-        const user1Id = session.user1Id as string | undefined;
-        const user2Id = session.user2Id as string | undefined;
-        const partnerId = user1Id === userId ? user2Id : user1Id;
+        const partnerId =
+          session.user1Id === userId ? session.user2Id : session.user1Id;
         if (partnerId) {
           excluded.add(partnerId);
         }
