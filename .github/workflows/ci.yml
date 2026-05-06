@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Lint & type-check ──────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run type-check
+
+  # ── Unit tests ─────────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run test:cov
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ── E2E tests ──────────────────────────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: social_coffee
+          POSTGRES_PASSWORD: ci_secret
+          POSTGRES_DB: social_coffee_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U social_coffee"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://social_coffee:ci_secret@localhost:5432/social_coffee_test
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      REDIS_PASSWORD: ''
+      REDIS_DB: '0'
+      NODE_ENV: test
+      PORT: '8000'
+      CORS_ORIGIN: http://localhost:5173
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-32-chars-long
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-chars-long
+      JWT_RESET_SECRET: ci-reset-secret-at-least-32-chars-long
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 7d
+      JWT_RESET_EXPIRATION: 1h
+      CLOUDINARY_CLOUD_NAME: placeholder
+      CLOUDINARY_API_KEY: placeholder
+      CLOUDINARY_API_SECRET: placeholder
+      ADMIN_EMAIL: admin@ci.test
+      ADMIN_PASSWORD: AdminCiPass123!
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - run: npm run test:e2e
