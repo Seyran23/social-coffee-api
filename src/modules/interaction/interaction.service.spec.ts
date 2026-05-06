@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { InteractionType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +35,9 @@ describe('InteractionService', () => {
           useValue: {
             interaction: {
               findUnique: vi.fn(),
+              findMany: vi.fn(),
               create: vi.fn(),
+              delete: vi.fn(),
               deleteMany: vi.fn(),
             },
             chatSession: {
@@ -71,6 +77,251 @@ describe('InteractionService', () => {
     prismaService = module.get<PrismaService>(PrismaService);
     redisService = module.get<RedisService>(RedisService);
     presenceGateway = module.get<PresenceGateway>(PresenceGateway);
+  });
+
+  // -----------------------------------------------------------------------
+  // unlikeUser
+  // -----------------------------------------------------------------------
+  describe('unlikeUser', () => {
+    it('should throw BadRequestException if actor is not at any venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      await expect(
+        interactionService.unlikeUser(actorId, targetId),
+      ).rejects.toThrow(
+        new BadRequestException(INTERACTION_MESSAGES.NOT_AT_VENUE),
+      );
+    });
+
+    it('should throw NotFoundException if the like interaction does not exist', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        interactionService.unlikeUser(actorId, targetId),
+      ).rejects.toThrow(
+        new NotFoundException(INTERACTION_MESSAGES.INTERACTION_NOT_FOUND),
+      );
+    });
+
+    it('should delete the interaction and return void on success', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      const existingInteraction = {
+        id: 'inter-999',
+        actorUserId: actorId,
+        targetUserId: targetId,
+        venueId,
+        type: InteractionType.LIKE,
+        createdAt: new Date(),
+      };
+      vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(
+        existingInteraction,
+      );
+      vi.spyOn(prismaService.interaction, 'delete').mockResolvedValue(
+        existingInteraction,
+      );
+
+      const result = await interactionService.unlikeUser(actorId, targetId);
+
+      expect(prismaService.interaction.delete).toHaveBeenCalledWith({
+        where: { id: existingInteraction.id },
+      });
+      expect(result).toBeUndefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getMyLikes
+  // -----------------------------------------------------------------------
+  describe('getMyLikes', () => {
+    it('should return an empty array when user is not at any venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      const result = await interactionService.getMyLikes(actorId);
+
+      expect(result).toEqual([]);
+      expect(prismaService.interaction.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should return mapped interaction DTOs when likes exist', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+
+      const mockInteractions = [
+        {
+          id: 'inter-1',
+          venueId,
+          actorUserId: actorId,
+          targetUserId: targetId,
+          type: InteractionType.LIKE,
+          createdAt: new Date('2024-06-01'),
+          targetUser: {
+            id: targetId,
+            firstName: 'Jane',
+            lastName: 'Smith',
+            profileImageUrl: null,
+          },
+        },
+      ];
+      vi.spyOn(prismaService.interaction, 'findMany').mockResolvedValue(
+        mockInteractions as any,
+      );
+
+      const result = await interactionService.getMyLikes(actorId);
+
+      expect(prismaService.interaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            actorUserId: actorId,
+            venueId,
+            type: InteractionType.LIKE,
+          },
+        }),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('inter-1');
+      expect(result[0].user.id).toBe(targetId);
+    });
+
+    it('should return an empty array when no likes exist at venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      vi.spyOn(prismaService.interaction, 'findMany').mockResolvedValue([]);
+
+      const result = await interactionService.getMyLikes(actorId);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getLikedMe
+  // -----------------------------------------------------------------------
+  describe('getLikedMe', () => {
+    it('should return an empty array when user is not at any venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      const result = await interactionService.getLikedMe(actorId);
+
+      expect(result).toEqual([]);
+      expect(prismaService.interaction.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should return mapped interaction DTOs for users who liked me', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+
+      const mockInteractions = [
+        {
+          id: 'inter-2',
+          venueId,
+          actorUserId: targetId,
+          targetUserId: actorId,
+          type: InteractionType.LIKE,
+          createdAt: new Date('2024-06-02'),
+          actorUser: {
+            id: targetId,
+            firstName: 'Bob',
+            lastName: 'Jones',
+            profileImageUrl: 'http://example.com/bob.png',
+          },
+        },
+      ];
+      vi.spyOn(prismaService.interaction, 'findMany').mockResolvedValue(
+        mockInteractions as any,
+      );
+
+      const result = await interactionService.getLikedMe(actorId);
+
+      expect(prismaService.interaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            targetUserId: actorId,
+            venueId,
+            type: InteractionType.LIKE,
+          },
+        }),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('inter-2');
+      expect(result[0].user.id).toBe(targetId);
+    });
+
+    it('should return an empty array when nobody liked me at the venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      vi.spyOn(prismaService.interaction, 'findMany').mockResolvedValue([]);
+
+      const result = await interactionService.getLikedMe(actorId);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // likeUser — additional validation paths
+  // -----------------------------------------------------------------------
+  describe('likeUser — additional validation paths', () => {
+    it('should throw BadRequestException if actor is not at venue', async () => {
+      vi.spyOn(redisService, 'isUserAtVenue')
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+
+      await expect(
+        interactionService.likeUser(actorId, targetId, venueId),
+      ).rejects.toThrow(
+        new BadRequestException(INTERACTION_MESSAGES.NOT_AT_VENUE),
+      );
+    });
+
+    it('should throw BadRequestException if actor already has an active chat session', async () => {
+      vi.spyOn(redisService, 'isUserAtVenue').mockResolvedValue(true);
+      vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(null);
+      vi.spyOn(redisService, 'getUserActiveChatSession')
+        .mockResolvedValueOnce('existing-chat-session')
+        .mockResolvedValueOnce(null);
+
+      await expect(
+        interactionService.likeUser(actorId, targetId, venueId),
+      ).rejects.toThrow(
+        new BadRequestException(INTERACTION_MESSAGES.ALREADY_IN_CHAT),
+      );
+    });
+
+    it('should throw BadRequestException if target already has an active chat session', async () => {
+      vi.spyOn(redisService, 'isUserAtVenue').mockResolvedValue(true);
+      vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(null);
+      vi.spyOn(redisService, 'getUserActiveChatSession')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('another-chat-session');
+
+      await expect(
+        interactionService.likeUser(actorId, targetId, venueId),
+      ).rejects.toThrow(
+        new BadRequestException(INTERACTION_MESSAGES.ALREADY_IN_CHAT),
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getMyLikesAtVenue (checkIfMutualMatch helper path)
+  // -----------------------------------------------------------------------
+  describe('getMyLikesAtVenue', () => {
+    it('should return empty array when user is not at any venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      const result = await interactionService.getMyLikesAtVenue(actorId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return list of target user ids liked by the actor at current venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      vi.spyOn(prismaService.interaction, 'findMany').mockResolvedValue([
+        { targetUserId: 'user-a' } as any,
+        { targetUserId: 'user-b' } as any,
+      ]);
+
+      const result = await interactionService.getMyLikesAtVenue(actorId);
+
+      expect(result).toEqual(['user-a', 'user-b']);
+    });
   });
 
   describe('likeUser', () => {

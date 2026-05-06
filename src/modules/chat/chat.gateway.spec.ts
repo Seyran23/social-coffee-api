@@ -233,6 +233,21 @@ describe('ChatGateway', () => {
         }),
       );
     });
+
+    it('should emit error when sendMessage throws', async () => {
+      vi.spyOn(chatService, 'sendMessage').mockRejectedValue(
+        new Error('Session not found'),
+      );
+
+      await chatGateway.handleSendMessage(mockClient, {
+        chatSessionId: 'chat-1',
+        content: 'hello',
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, {
+        message: 'Session not found',
+      });
+    });
   });
 
   describe('handleTyping', () => {
@@ -249,6 +264,21 @@ describe('ChatGateway', () => {
         userId: 'user-1',
         isTyping: true,
       });
+    });
+
+    it('should silently swallow error when validateParticipant throws', async () => {
+      vi.spyOn(chatService, 'validateParticipant').mockRejectedValue(
+        new Error('Not a participant'),
+      );
+
+      await expect(
+        chatGateway.handleTyping(mockClient, {
+          chatSessionId: 'chat-1',
+          isTyping: false,
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(mockClient.to).not.toHaveBeenCalled();
     });
   });
 
@@ -267,6 +297,136 @@ describe('ChatGateway', () => {
           endedBy: 'user-1',
         }),
       );
+    });
+
+    it('should emit error when endChat throws', async () => {
+      vi.spyOn(chatService, 'endChat').mockRejectedValue(
+        new Error('Chat already ended'),
+      );
+
+      await chatGateway.handleEndChat(mockClient, { chatSessionId: 'chat-1' });
+
+      expect(mockClient.emit).toHaveBeenCalledWith(CHAT_EVENTS.ERROR, {
+        message: 'Chat already ended',
+      });
+    });
+  });
+
+  describe('handleDisconnect', () => {
+    it('should delete user socket and not notify partner when no active chat', async () => {
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        null,
+      );
+
+      await chatGateway.handleDisconnect(mockClient);
+
+      expect(redisService.deleteUserSocket).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should notify partner socket when partner is online', async () => {
+      const partnerSocket = { emit: vi.fn() };
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        'chat-1',
+      );
+      vi.spyOn(chatService, 'getPartnerId').mockResolvedValue('user-2');
+      vi.spyOn(redisService, 'getUserSocket').mockResolvedValue('partner-sock');
+      mockServer.sockets.sockets.set('partner-sock', partnerSocket);
+
+      await chatGateway.handleDisconnect(mockClient);
+
+      expect(partnerSocket.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.PARTNER_LEFT,
+        expect.objectContaining({ userId: 'user-1' }),
+      );
+    });
+
+    it('should not emit PARTNER_LEFT when partner socket is not found in server', async () => {
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        'chat-1',
+      );
+      vi.spyOn(chatService, 'getPartnerId').mockResolvedValue('user-2');
+      vi.spyOn(redisService, 'getUserSocket').mockResolvedValue('gone-sock');
+      // 'gone-sock' is NOT in mockServer.sockets.sockets
+
+      await chatGateway.handleDisconnect(mockClient);
+
+      // No crash — redis key should be cleaned up
+      expect(redisService.deleteUserSocket).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should return early when client has no userId', async () => {
+      const anonClient = {
+        ...mockClient,
+        user: { userId: undefined as any, email: 'anon@test.com' },
+      } as any;
+
+      await chatGateway.handleDisconnect(anonClient);
+
+      expect(redisService.deleteUserSocket).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('afterInit', () => {
+    it('should register rate-limit and auth middlewares on the server', () => {
+      const fakeMiddleware = vi.fn();
+      vi.spyOn(wsRateLimitMiddleware, 'useConnectionLimit').mockReturnValue(
+        fakeMiddleware as any,
+      );
+
+      chatGateway.afterInit(mockServer as any);
+
+      expect(mockServer.use).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('cleanupRateLimits', () => {
+    it('should delegate to wsRateLimitMiddleware.cleanup', () => {
+      chatGateway.cleanupRateLimits();
+      expect(wsRateLimitMiddleware.cleanup).toHaveBeenCalled();
+    });
+  });
+
+  describe('runExpiryWarningJob', () => {
+    it('should emit SESSION_ENDING_SOON for each expiring chat', async () => {
+      vi.spyOn(chatService, 'checkExpiringChats').mockResolvedValue([
+        { chatSessionId: 'chat-42', minutesLeft: 5 },
+        { chatSessionId: 'chat-99', minutesLeft: 2 },
+      ] as any);
+
+      await chatGateway.runExpiryWarningJob();
+
+      expect(mockServer.to).toHaveBeenCalledWith('chat:chat-42');
+      expect(mockServer.to).toHaveBeenCalledWith('chat:chat-99');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.SESSION_ENDING_SOON,
+        expect.objectContaining({
+          chatSessionId: 'chat-42',
+          minutesLeft: 5,
+        }),
+      );
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.SESSION_ENDING_SOON,
+        expect.objectContaining({
+          chatSessionId: 'chat-99',
+          minutesLeft: 2,
+        }),
+      );
+    });
+
+    it('should handle empty expiring chats without emitting', async () => {
+      vi.spyOn(chatService, 'checkExpiringChats').mockResolvedValue([]);
+
+      await chatGateway.runExpiryWarningJob();
+
+      expect(mockServer.emit).not.toHaveBeenCalled();
+    });
+
+    it('should swallow error when checkExpiringChats throws', async () => {
+      vi.spyOn(chatService, 'checkExpiringChats').mockRejectedValue(
+        new Error('DB down'),
+      );
+
+      await expect(chatGateway.runExpiryWarningJob()).resolves.toBeUndefined();
     });
   });
 });

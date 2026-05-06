@@ -8,15 +8,27 @@ import { PrismaService } from '@/database/prisma.service';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import * as MapUtils from '@/modules/venue/utils/map-url.util';
+import * as QrUtils from '@/modules/venue/utils/qr-code.util';
 import { VenueService } from '@/modules/venue/venue.service';
 
-// Mock the utils module
+// Mock the utils modules
 vi.mock('@/modules/venue/utils/map-url.util', async importOriginal => {
   const actual = await importOriginal<typeof MapUtils>();
   return {
     ...actual,
+    extractLatLonFromGoogleMaps: vi.fn(),
     isWithinDistance: vi.fn(),
     haversineDistance: vi.fn(),
+  };
+});
+
+vi.mock('@/modules/venue/utils/qr-code.util', async importOriginal => {
+  const actual = await importOriginal<typeof QrUtils>();
+  return {
+    ...actual,
+    generateQRCodeDataURL: vi
+      .fn()
+      .mockResolvedValue('data:image/png;base64,qr'),
   };
 });
 
@@ -219,6 +231,248 @@ describe('VenueService', () => {
         data: { status: VenueStatus.TEMPORARILY_CLOSED },
       });
       expect(result.status).toBe(VenueStatus.TEMPORARILY_CLOSED);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // checkOut
+  // -----------------------------------------------------------------------
+  describe('checkOut', () => {
+    const userId = 'user-1';
+    const venueId = 'venue-1';
+
+    it('should throw BadRequestException if user is not checked in to the venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(
+        'venue-other',
+      );
+
+      await expect(venueService.checkOut(userId, venueId)).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.NOT_CHECKED_IN),
+      );
+    });
+
+    it('should throw BadRequestException if user has no active venue', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      await expect(venueService.checkOut(userId, venueId)).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.NOT_CHECKED_IN),
+      );
+    });
+
+    it('should remove user from venue on successful checkout', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(venueId);
+      vi.spyOn(redisService, 'removeUserFromVenue').mockResolvedValue(
+        undefined,
+      );
+
+      await venueService.checkOut(userId, venueId);
+
+      expect(redisService.removeUserFromVenue).toHaveBeenCalledWith(
+        userId,
+        venueId,
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getVenue (exercises getVenueById internally)
+  // -----------------------------------------------------------------------
+  describe('getVenue', () => {
+    const venueId = 'venue-42';
+    const mockVenueRow = {
+      id: venueId,
+      name: 'Brew Lab',
+      status: VenueStatus.ACTIVE,
+      latitude: 51.5,
+      longitude: -0.1,
+      geofenceMeters: 50,
+      mapUrl: 'https://maps.google.com/?q=51.5,-0.1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('should throw NotFoundException when venue does not exist', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(null);
+
+      await expect(venueService.getVenue(venueId)).rejects.toThrow(
+        new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND),
+      );
+    });
+
+    it('should return venue with qrCode when found', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        mockVenueRow as any,
+      );
+
+      const result = await venueService.getVenue(venueId);
+
+      expect(result.id).toBe(venueId);
+      expect(result.qrCode).toBe('data:image/png;base64,qr');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // updateVenue
+  // -----------------------------------------------------------------------
+  describe('updateVenue', () => {
+    const venueId = 'venue-55';
+    const baseVenue = {
+      id: venueId,
+      name: 'Old Name',
+      status: VenueStatus.ACTIVE,
+      latitude: 10.0,
+      longitude: 20.0,
+      geofenceMeters: 100,
+      mapUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('should throw NotFoundException when the venue to update does not exist', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        venueService.updateVenue(venueId, { name: 'New Name' }),
+      ).rejects.toThrow(new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND));
+    });
+
+    it('should update the venue name without touching coordinates when no mapUrl given', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        baseVenue as any,
+      );
+      const updatedVenue = { ...baseVenue, name: 'New Name' };
+      vi.spyOn(prismaService.venue, 'update').mockResolvedValue(
+        updatedVenue as any,
+      );
+
+      const result = await venueService.updateVenue(venueId, {
+        name: 'New Name',
+      });
+
+      expect(prismaService.venue.update).toHaveBeenCalledWith({
+        where: { id: venueId },
+        data: expect.objectContaining({ name: 'New Name' }),
+      });
+      expect(result.name).toBe('New Name');
+      expect(MapUtils.extractLatLonFromGoogleMaps).not.toHaveBeenCalled();
+    });
+
+    it('should extract and save new coordinates when mapUrl is supplied', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        baseVenue as any,
+      );
+      vi.mocked(MapUtils.extractLatLonFromGoogleMaps).mockResolvedValue({
+        latitude: 55.0,
+        longitude: 37.0,
+      });
+      const updatedVenue = {
+        ...baseVenue,
+        mapUrl: 'https://maps.google.com/?q=55.0,37.0',
+        latitude: 55.0,
+        longitude: 37.0,
+      };
+      vi.spyOn(prismaService.venue, 'update').mockResolvedValue(
+        updatedVenue as any,
+      );
+
+      const result = await venueService.updateVenue(venueId, {
+        mapUrl: 'https://maps.google.com/?q=55.0,37.0',
+      });
+
+      expect(MapUtils.extractLatLonFromGoogleMaps).toHaveBeenCalled();
+      expect(prismaService.venue.update).toHaveBeenCalledWith({
+        where: { id: venueId },
+        data: expect.objectContaining({ latitude: 55.0, longitude: 37.0 }),
+      });
+      expect(result.latitude).toBe(55.0);
+    });
+
+    it('should throw BadRequestException when mapUrl cannot be parsed', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        baseVenue as any,
+      );
+      vi.mocked(MapUtils.extractLatLonFromGoogleMaps).mockResolvedValue(null);
+
+      await expect(
+        venueService.updateVenue(venueId, {
+          mapUrl: 'https://example.com/bad-url',
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.INVALID_MAP_URL),
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // deleteVenue
+  // -----------------------------------------------------------------------
+  describe('deleteVenue', () => {
+    const venueId = 'venue-77';
+    const baseVenue = {
+      id: venueId,
+      name: 'Old Venue',
+      status: VenueStatus.ACTIVE,
+      latitude: 0,
+      longitude: 0,
+      geofenceMeters: 50,
+      mapUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('should throw NotFoundException when venue does not exist', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(null);
+
+      await expect(venueService.deleteVenue(venueId)).rejects.toThrow(
+        new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND),
+      );
+    });
+
+    it('should soft-delete by setting status to PERMANENTLY_CLOSED', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        baseVenue as any,
+      );
+      const deletedVenue = {
+        ...baseVenue,
+        status: VenueStatus.PERMANENTLY_CLOSED,
+      };
+      vi.spyOn(prismaService.venue, 'update').mockResolvedValue(
+        deletedVenue as any,
+      );
+
+      const result = await venueService.deleteVenue(venueId);
+
+      expect(prismaService.venue.update).toHaveBeenCalledWith({
+        where: { id: venueId },
+        data: { status: VenueStatus.PERMANENTLY_CLOSED },
+      });
+      expect(result.status).toBe(VenueStatus.PERMANENTLY_CLOSED);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // checkIn — additional paths
+  // -----------------------------------------------------------------------
+  describe('checkIn — permanently closed venue', () => {
+    const userId = 'user-2';
+    const venueId = 'venue-pc';
+    const checkInDto = { latitude: 0, longitude: 0 };
+
+    it('should throw BadRequestException if venue is permanently closed', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({
+        id: venueId,
+        name: 'Gone Shop',
+        status: VenueStatus.PERMANENTLY_CLOSED,
+        latitude: 0,
+        longitude: 0,
+        geofenceMeters: 50,
+      } as any);
+
+      await expect(
+        venueService.checkIn(userId, venueId, checkInDto),
+      ).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.VENUE_PERMANENTLY_CLOSED),
+      );
     });
   });
 });
