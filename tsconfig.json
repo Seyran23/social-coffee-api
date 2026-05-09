@@ -26,7 +26,7 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*", "./dist/*"]
     }
   },
   "include": ["src/**/*", "test/**/*", "prisma/**/*", "vitest.config.ts"],
