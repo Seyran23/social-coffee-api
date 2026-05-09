@@ -40,7 +40,7 @@ describe('ResponseBuilder', () => {
     });
 
     it('should include errors array when provided', () => {
-      const errors = [{ field: 'email', message: 'Invalid email' }];
+      const errors = [{ field: 'email', messages: ['Invalid email'] }];
       const result = ResponseBuilder.error('Validation failed', 422, errors);
 
       expect(result.statusCode).toBe(422);
@@ -56,7 +56,7 @@ describe('ResponseBuilder', () => {
 
   describe('validationError', () => {
     it('should return a validation error response with default message and 400', () => {
-      const errors = [{ field: 'name', message: 'Required' }];
+      const errors = [{ field: 'name', messages: ['Required'] }];
       const result = ResponseBuilder.validationError(errors);
 
       expect(result.success).toBe(false);
@@ -67,7 +67,7 @@ describe('ResponseBuilder', () => {
     });
 
     it('should accept a custom message and statusCode', () => {
-      const errors = [{ field: 'age', message: 'Must be >= 18' }];
+      const errors = [{ field: 'age', messages: ['Must be >= 18'] }];
       const result = ResponseBuilder.validationError(
         errors,
         'Custom validation message',

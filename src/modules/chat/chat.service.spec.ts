@@ -293,7 +293,7 @@ describe('ChatService', () => {
         user1Id: 'user-1',
       } as any);
 
-      const beforeDate = new Date('2024-01-01T10:30:00Z');
+      const beforeDate = '2024-01-01T10:30:00Z';
       const mockDbMessages = [
         {
           id: 'msg-2',
