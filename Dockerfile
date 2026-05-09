@@ -7,9 +7,11 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci --ignore-scripts
+# HUSKY=0 skips git hook setup (no .git in Docker), allows all other scripts
+ENV HUSKY=0
+RUN npm ci
 
-# Generate Prisma client for the target platform
+# Generate Prisma client for the target platform (also runs via postinstall, explicit for safety)
 RUN npx prisma generate
 
 COPY . .
