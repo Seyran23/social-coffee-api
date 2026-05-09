@@ -13,11 +13,15 @@ import { RedisService } from './redis.service';
     {
       provide: 'REDIS_CLIENT',
       useFactory: (configService: ConfigService) => {
+        const host = configService.get('REDIS_HOST', 'localhost');
+        const isUpstash = host.includes('upstash.io');
+
         return new Redis({
-          host: configService.get('REDIS_HOST', 'localhost'),
+          host,
           port: configService.get('REDIS_PORT', 6379),
           password: configService.get('REDIS_PASSWORD'),
           db: configService.get('REDIS_DB', 0),
+          tls: isUpstash ? {} : undefined,
           retryStrategy: (times: number) => {
             const delay = Math.min(times * 50, 2000);
             return delay;
