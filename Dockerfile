@@ -14,7 +14,7 @@ RUN npx prisma generate
 
 COPY . .
 
-RUN npm run build
+RUN npm run build && test -f dist/main.js
 
 # ─── Stage 2: Runner ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
