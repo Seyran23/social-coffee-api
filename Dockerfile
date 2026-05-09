@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Generate Prisma client for the target platform
 RUN npx prisma generate
@@ -29,7 +29,7 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci --omit=dev \
+RUN npm ci --omit=dev --ignore-scripts \
  && npx prisma generate \
  && npm cache clean --force
 
