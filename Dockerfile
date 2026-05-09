@@ -37,6 +37,9 @@ RUN npm ci --omit=dev --ignore-scripts \
  && npx prisma generate \
  && npm cache clean --force
 
+# tsconfig.json is needed by tsconfig-paths/register at runtime
+COPY tsconfig.json ./
+
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
 
