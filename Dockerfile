@@ -16,7 +16,9 @@ RUN npx prisma generate
 
 COPY . .
 
-RUN npm run build && test -f dist/main.js
+RUN rm -f tsconfig.build.tsbuildinfo && \
+    node_modules/.bin/tsc -p tsconfig.build.json && \
+    test -f dist/main.js
 
 # ─── Stage 2: Runner ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
@@ -46,4 +48,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget -qO- http://localhost:8000/v1/health/ready || exit 1
 
-CMD ["node", "dist/main"]
+CMD ["node", "-r", "tsconfig-paths/register", "dist/main"]

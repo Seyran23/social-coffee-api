@@ -67,3 +67,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Stray vitest artifact (sometimes created inside src/modules/)
 src/modules/node_modules/
 src/modules/.vite/
+*.tsbuildinfo
