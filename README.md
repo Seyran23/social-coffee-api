@@ -31,6 +31,7 @@ If you’d like to explore or contribute to Social Coffee, see the full setup gu
 
 | Doc                                                            | Description                                                         |
 | -------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [Architecture](./docs/ARCHITECTURE.md)                         | System, ERD, auth, chat, and presence flow diagrams                 |
 | [Setup Guide](./docs/SETUP.md)                                 | Install, configure, and run the project                             |
 | [Integration Guide](./docs/INTEGRATION_GUIDE.md)               | Full end-to-end user journey (REST + WebSocket)                     |
 | [Presence WebSocket Guide](./docs/PRESENCE_WEBSOCKET_GUIDE.md) | `/presence` namespace — venue feed, join/leave events, heartbeat    |
