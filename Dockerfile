@@ -35,7 +35,9 @@ COPY prisma ./prisma/
 
 RUN npm ci --omit=dev --ignore-scripts \
  && npx prisma generate \
- && npm cache clean --force
+ && npm cache clean --force \
+ && mkdir -p /app/logs \
+ && chown -R nestjs:nodejs /app/logs
 
 # tsconfig.json is needed by tsconfig-paths/register at runtime
 COPY tsconfig.json ./
