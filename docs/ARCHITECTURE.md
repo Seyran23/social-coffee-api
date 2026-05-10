@@ -36,7 +36,7 @@ erDiagram
         string firstName
         string lastName
         date birthDate
-        string email UK
+        string email
         string passwordHash
         enum gender
         enum role
@@ -47,16 +47,16 @@ erDiagram
 
     Preference {
         cuid id PK
-        uuid userId FK UK
+        uuid userId FK
         int minAge
         int maxAge
         enum preferredGender
-        enum[] lookingFor
+        string lookingFor
     }
 
     Interest {
         cuid id PK
-        string name UK
+        string name
     }
 
     UserInterest {
