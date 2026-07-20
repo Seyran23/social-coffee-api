@@ -257,20 +257,39 @@ export class RedisService implements OnModuleDestroy {
   // PROFILE CACHING
 
   async cacheProfile(userId: string, profile: UserProfile): Promise<void> {
-    await this.redis.setex(
-      `profile:${userId}`,
-      REDIS_TTL.PROFILE_CACHE,
-      JSON.stringify(profile),
-    );
+    try {
+      await this.redis.setex(
+        `profile:${userId}`,
+        REDIS_TTL.PROFILE_CACHE,
+        JSON.stringify(profile),
+      );
+    } catch (error) {
+      this.logger.error(`Failed to cache profile for user ${userId}`, error);
+    }
   }
 
   async getCachedProfile(userId: string): Promise<UserProfile | null> {
-    const data = await this.redis.get(`profile:${userId}`);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = await this.redis.get(`profile:${userId}`);
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      this.logger.error(
+        `Failed to read cached profile for user ${userId}`,
+        error,
+      );
+      return null;
+    }
   }
 
   async invalidateProfile(userId: string): Promise<void> {
-    await this.redis.del(`profile:${userId}`);
+    try {
+      await this.redis.del(`profile:${userId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to invalidate cached profile for user ${userId}`,
+        error,
+      );
+    }
   }
 
   // STATISTICS

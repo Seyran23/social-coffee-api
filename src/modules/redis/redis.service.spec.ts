@@ -253,6 +253,30 @@ describe('RedisService', () => {
 
       expect(mockRedis.del).toHaveBeenCalledWith('profile:user-3');
     });
+
+    it('should return null instead of throwing when the client errors on read', async () => {
+      mockRedis.get.mockRejectedValue(new Error('connection lost'));
+
+      const result = await redisService.getCachedProfile('user-4');
+
+      expect(result).toBeNull();
+    });
+
+    it('should not throw when the client errors on write', async () => {
+      mockRedis.setex.mockRejectedValue(new Error('connection lost'));
+
+      await expect(
+        redisService.cacheProfile('user-5', { id: 'user-5' } as any),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should not throw when the client errors on invalidation', async () => {
+      mockRedis.del.mockRejectedValue(new Error('connection lost'));
+
+      await expect(
+        redisService.invalidateProfile('user-6'),
+      ).resolves.toBeUndefined();
+    });
   });
 
   // -----------------------------------------------------------------------
