@@ -8,6 +8,7 @@ import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { UpdatePreferenceDto } from '@/modules/preference/dto/request/update-preference.dto';
 import { PreferenceResponseDto } from '@/modules/preference/dto/response/preference-response.dto';
+import { RedisService } from '@/modules/redis/redis.service';
 
 import { PREFERENCE_MESSAGES } from './constants/messages';
 
@@ -15,6 +16,7 @@ import { PREFERENCE_MESSAGES } from './constants/messages';
 export class PreferenceService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly logger: LoggerService,
   ) {}
 
@@ -54,6 +56,8 @@ export class PreferenceService {
       update: dto,
     });
 
+    await this.redis.invalidateProfile(userId);
+
     this.logger.log(`Preferences upserted for user: ${userId}`);
 
     return preference;
@@ -71,6 +75,8 @@ export class PreferenceService {
     await this.prisma.preference.delete({
       where: { userId },
     });
+
+    await this.redis.invalidateProfile(userId);
 
     this.logger.log(`Preferences deleted for user: ${userId}`);
   }

@@ -6,10 +6,12 @@ import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { PREFERENCE_MESSAGES } from '@/modules/preference/constants/messages';
 import { PreferenceService } from '@/modules/preference/preference.service';
+import { RedisService } from '@/modules/redis/redis.service';
 
 describe('PreferenceService', () => {
   let preferenceService: PreferenceService;
   let prismaService: PrismaService;
+  let redisService: RedisService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +29,12 @@ describe('PreferenceService', () => {
           },
         },
         {
+          provide: RedisService,
+          useValue: {
+            invalidateProfile: vi.fn(),
+          },
+        },
+        {
           provide: LoggerService,
           useValue: {
             log: vi.fn(),
@@ -40,6 +48,7 @@ describe('PreferenceService', () => {
 
     preferenceService = module.get<PreferenceService>(PreferenceService);
     prismaService = module.get<PrismaService>(PrismaService);
+    redisService = module.get<RedisService>(RedisService);
 
     vi.clearAllMocks();
   });
@@ -131,6 +140,7 @@ describe('PreferenceService', () => {
         update: validDto,
       });
       expect(result).toEqual(mockUpsertedPref);
+      expect(redisService.invalidateProfile).toHaveBeenCalledWith('user-1');
     });
   });
 
@@ -156,6 +166,7 @@ describe('PreferenceService', () => {
       expect(prismaService.preference.delete).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
       });
+      expect(redisService.invalidateProfile).toHaveBeenCalledWith('user-1');
     });
   });
 });
