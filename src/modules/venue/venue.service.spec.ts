@@ -212,6 +212,105 @@ describe('VenueService', () => {
     });
   });
 
+  describe('getNearbyVenues', () => {
+    it('should only query active venues with coordinates set', async () => {
+      vi.spyOn(prismaService.venue, 'findMany').mockResolvedValue([]);
+
+      await venueService.getNearbyVenues({
+        latitude: 41.0082,
+        longitude: 28.9784,
+      });
+
+      expect(prismaService.venue.findMany).toHaveBeenCalledWith({
+        where: {
+          status: VenueStatus.ACTIVE,
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+      });
+    });
+
+    it('should exclude venues outside the given radius', async () => {
+      const nearVenue = {
+        id: 'v1',
+        name: 'Near',
+        latitude: 41.01,
+        longitude: 28.98,
+      };
+      const farVenue = {
+        id: 'v2',
+        name: 'Far',
+        latitude: 42.5,
+        longitude: 30.5,
+      };
+      vi.spyOn(prismaService.venue, 'findMany').mockResolvedValue([
+        nearVenue,
+        farVenue,
+      ] as any);
+      vi.mocked(MapUtils.haversineDistance).mockImplementation(
+        (_user, venue) =>
+          venue.venueLat === nearVenue.latitude ? 500 : 100000,
+      );
+
+      const result = await venueService.getNearbyVenues({
+        latitude: 41.0082,
+        longitude: 28.9784,
+        radiusMeters: 5000,
+      });
+
+      expect(result).toEqual([nearVenue]);
+    });
+
+    it('should default the radius to 5km when not provided', async () => {
+      const venue = {
+        id: 'v1',
+        name: 'Venue',
+        latitude: 41.01,
+        longitude: 28.98,
+      };
+      vi.spyOn(prismaService.venue, 'findMany').mockResolvedValue([
+        venue,
+      ] as any);
+      vi.mocked(MapUtils.haversineDistance).mockReturnValue(4999);
+
+      const result = await venueService.getNearbyVenues({
+        latitude: 41.0082,
+        longitude: 28.9784,
+      });
+
+      expect(result).toEqual([venue]);
+    });
+
+    it('should sort results nearest-first', async () => {
+      const closer = {
+        id: 'v1',
+        name: 'Closer',
+        latitude: 41.01,
+        longitude: 28.98,
+      };
+      const farther = {
+        id: 'v2',
+        name: 'Farther',
+        latitude: 41.02,
+        longitude: 28.99,
+      };
+      vi.spyOn(prismaService.venue, 'findMany').mockResolvedValue([
+        farther,
+        closer,
+      ] as any);
+      vi.mocked(MapUtils.haversineDistance).mockImplementation(
+        (_user, venue) => (venue.venueLat === closer.latitude ? 300 : 1200),
+      );
+
+      const result = await venueService.getNearbyVenues({
+        latitude: 41.0082,
+        longitude: 28.9784,
+      });
+
+      expect(result).toEqual([closer, farther]);
+    });
+  });
+
   describe('changeVenueStatus', () => {
     it('should toggle status if no status is provided', async () => {
       vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({

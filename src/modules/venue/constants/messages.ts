@@ -1,5 +1,6 @@
 export const VENUE_MESSAGES = {
   VENUES_RETRIEVED: 'Venues retrieved successfully',
+  NEARBY_VENUES_RETRIEVED: 'Nearby venues retrieved successfully',
   VENUE_RETRIEVED: 'Venue retrieved successfully',
   VENUE_CREATED: 'Venue created successfully',
   VENUE_UPDATED: 'Venue updated successfully',

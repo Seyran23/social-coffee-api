@@ -30,6 +30,7 @@ import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import { ChangeStatusDto } from '@/modules/venue/dto/request/change-status.dto';
 import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
+import { GetNearbyVenuesQueryDto } from '@/modules/venue/dto/request/get-nearby-venues-query.dto';
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
 import { QRCodeResponseDto } from '@/modules/venue/dto/response/qrcode-response.dto';
@@ -66,6 +67,28 @@ export class VenueController {
       page,
       limit,
       VENUE_MESSAGES.VENUES_RETRIEVED,
+    );
+  }
+
+  @Get('nearby')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Get nearby venues',
+    description:
+      'Retrieve active venues within a given radius of the provided coordinates, sorted nearest first. Defaults to a 5km radius.',
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.NEARBY_VENUES_RETRIEVED,
+    isArray: true,
+  })
+  @ApiValidationErrorResponse()
+  @ApiCommonErrorResponses()
+  async getNearbyVenues(@Query() query: GetNearbyVenuesQueryDto) {
+    const venues = await this.venueService.getNearbyVenues(query);
+    return ResponseBuilder.success(
+      venues,
+      VENUE_MESSAGES.NEARBY_VENUES_RETRIEVED,
     );
   }
 

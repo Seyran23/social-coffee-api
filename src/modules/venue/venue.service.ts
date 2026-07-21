@@ -8,9 +8,11 @@ import { Prisma, type Venue, VenueStatus } from '@prisma/client';
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { RedisService } from '@/modules/redis/redis.service';
+import { VENUE_DISCOVERY } from '@/modules/venue/constants/discovery';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
+import { GetNearbyVenuesQueryDto } from '@/modules/venue/dto/request/get-nearby-venues-query.dto';
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
 import { VenueWithQRCode } from '@/modules/venue/interfaces/venue-with-qr-code.interface';
@@ -73,6 +75,38 @@ export class VenueService {
 
     this.logger.log(`Successfully generated QR code for venue ID: ${id}`);
     return generateQRCodeDataURL(venue.id);
+  }
+
+  async getNearbyVenues(query: GetNearbyVenuesQueryDto): Promise<Venue[]> {
+    const radiusMeters =
+      query.radiusMeters ?? VENUE_DISCOVERY.DEFAULT_NEARBY_RADIUS_METERS;
+    const userCoords = { userLat: query.latitude, userLon: query.longitude };
+
+    const activeVenues = await this.database.venue.findMany({
+      where: {
+        status: VenueStatus.ACTIVE,
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+    });
+
+    const nearbyVenues = activeVenues
+      .map(venue => ({
+        venue,
+        distance: haversineDistance(userCoords, {
+          venueLat: venue.latitude as number,
+          venueLon: venue.longitude as number,
+        }),
+      }))
+      .filter(({ distance }) => distance <= radiusMeters)
+      .sort((a, b) => a.distance - b.distance)
+      .map(({ venue }) => venue);
+
+    this.logger.log(
+      `Found ${nearbyVenues.length} venue(s) within ${radiusMeters}m of (${query.latitude}, ${query.longitude})`,
+    );
+
+    return nearbyVenues;
   }
 
   async getVenues(params: GetVenuesQueryDto): Promise<VenuesWithPagination> {

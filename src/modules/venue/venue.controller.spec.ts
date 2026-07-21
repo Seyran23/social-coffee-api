@@ -18,6 +18,7 @@ describe('VenueController', () => {
           provide: VenueService,
           useValue: {
             getVenues: vi.fn(),
+            getNearbyVenues: vi.fn(),
             getVenue: vi.fn(),
             getVenueQRCode: vi.fn(),
             createVenue: vi.fn(),
@@ -64,6 +65,26 @@ describe('VenueController', () => {
           mockResult.page,
           mockResult.limit,
           VENUE_MESSAGES.VENUES_RETRIEVED,
+        ),
+      );
+    });
+  });
+
+  describe('getNearbyVenues', () => {
+    it('should return nearby venues', async () => {
+      const mockVenues = [{ id: 'venue-1', name: 'Cafe' }];
+      vi.spyOn(venueService, 'getNearbyVenues').mockResolvedValue(
+        mockVenues as any,
+      );
+
+      const query = { latitude: 41.0082, longitude: 28.9784 };
+      const result = await venueController.getNearbyVenues(query as any);
+
+      expect(venueService.getNearbyVenues).toHaveBeenCalledWith(query);
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockVenues,
+          VENUE_MESSAGES.NEARBY_VENUES_RETRIEVED,
         ),
       );
     });

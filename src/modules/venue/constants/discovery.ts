@@ -1,0 +1,3 @@
+export const VENUE_DISCOVERY = {
+  DEFAULT_NEARBY_RADIUS_METERS: 5000,
+} as const;
