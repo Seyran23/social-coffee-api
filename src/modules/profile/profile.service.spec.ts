@@ -19,21 +19,34 @@ describe('ProfileService', () => {
   const mockDate = new Date('2000-01-01');
 
   beforeEach(async () => {
+    const mockPrisma: any = {
+      user: {
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        findMany: vi.fn(),
+      },
+      interaction: {
+        findMany: vi.fn(),
+      },
+      interest: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      userInterest: {
+        deleteMany: vi.fn(),
+        createMany: vi.fn(),
+      },
+      $transaction: vi.fn((callback: (tx: any) => unknown) =>
+        callback(mockPrisma),
+      ),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfileService,
         {
           provide: PrismaService,
-          useValue: {
-            user: {
-              findUnique: vi.fn(),
-              update: vi.fn(),
-              findMany: vi.fn(),
-            },
-            interaction: {
-              findMany: vi.fn(),
-            },
-          },
+          useValue: mockPrisma,
         },
         {
           provide: RedisService,
@@ -477,6 +490,120 @@ describe('ProfileService', () => {
 
       const callArgs = vi.mocked(prismaService.user.update).mock.calls[0][0];
       expect(callArgs.data).toHaveProperty('bio');
+    });
+
+    it('should update gender and birthDate when provided', async () => {
+      vi.spyOn(prismaService.user, 'update').mockResolvedValueOnce({
+        id: 'user-1',
+        firstName: 'Bob',
+        lastName: 'Jones',
+        email: 'bob@example.com',
+        bio: '',
+        birthDate: mockDate,
+        gender: Gender.OTHER,
+        profileImageUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userInterests: [],
+        preference: null,
+      } as any);
+
+      await profileService.updateMyProfile('user-1', {
+        gender: Gender.OTHER,
+        birthDate: '2000-01-01',
+      });
+
+      const callArgs = vi.mocked(prismaService.user.update).mock.calls[0][0];
+      expect(callArgs.data).toMatchObject({
+        gender: Gender.OTHER,
+        birthDate: new Date('2000-01-01'),
+      });
+    });
+
+    it('should replace interests when interestIds is provided', async () => {
+      vi.spyOn(prismaService.interest, 'count').mockResolvedValueOnce(2);
+      vi.spyOn(prismaService.user, 'update').mockResolvedValueOnce({
+        id: 'user-1',
+        firstName: 'Bob',
+        lastName: 'Jones',
+        email: 'bob@example.com',
+        bio: '',
+        birthDate: mockDate,
+        gender: Gender.MALE,
+        profileImageUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userInterests: [],
+        preference: null,
+      } as any);
+
+      await profileService.updateMyProfile('user-1', {
+        interestIds: ['interest-1', 'interest-2'],
+      });
+
+      expect(prismaService.userInterest.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+      expect(prismaService.userInterest.createMany).toHaveBeenCalledWith({
+        data: [
+          { userId: 'user-1', interestId: 'interest-1' },
+          { userId: 'user-1', interestId: 'interest-2' },
+        ],
+      });
+    });
+
+    it('should throw BadRequestException when interestIds contain unknown ids', async () => {
+      vi.spyOn(prismaService.interest, 'count').mockResolvedValueOnce(1);
+
+      await expect(
+        profileService.updateMyProfile('user-1', {
+          interestIds: ['interest-1', 'interest-missing'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should not touch userInterests when interestIds is not provided', async () => {
+      vi.spyOn(prismaService.user, 'update').mockResolvedValueOnce({
+        id: 'user-1',
+        firstName: 'Bob',
+        lastName: 'Jones',
+        email: 'bob@example.com',
+        bio: '',
+        birthDate: mockDate,
+        gender: Gender.MALE,
+        profileImageUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userInterests: [],
+        preference: null,
+      } as any);
+
+      await profileService.updateMyProfile('user-1', { firstName: 'Bob' });
+
+      expect(prismaService.userInterest.deleteMany).not.toHaveBeenCalled();
+      expect(prismaService.userInterest.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getInterests', () => {
+    it('should return all interests ordered by name', async () => {
+      const interests = [
+        { id: 'interest-1', name: 'Coffee' },
+        { id: 'interest-2', name: 'Hiking' },
+      ];
+      vi.spyOn(prismaService.interest, 'findMany').mockResolvedValueOnce(
+        interests as any,
+      );
+
+      const result = await profileService.getInterests();
+
+      expect(prismaService.interest.findMany).toHaveBeenCalledWith({
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      });
+      expect(result).toEqual(interests);
     });
   });
 

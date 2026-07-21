@@ -35,6 +35,7 @@ import { FileUploadInterceptor } from '@/modules/file-upload/interceptors/file-u
 import { PROFILE_MESSAGES } from '@/modules/profile/constants/messages';
 import { DiscoverQueryDto } from '@/modules/profile/dto/request/discover-query.dto';
 import { UpdateProfileDto } from '@/modules/profile/dto/request/update-profile.dto';
+import { InterestDto } from '@/modules/profile/dto/response/interest.dto';
 import { PaginatedFeedDto } from '@/modules/profile/dto/response/paginated-feed.dto';
 import { ProfileImageUploadDto } from '@/modules/profile/dto/response/profile-image-upload.dto';
 import { ProfileResponseDto } from '@/modules/profile/dto/response/profile-repsonse.dto';
@@ -64,6 +65,26 @@ export class ProfileController {
     return ResponseBuilder.success(
       profile,
       PROFILE_MESSAGES.PROFILE_FETCHED,
+      HttpStatus.OK,
+    );
+  }
+
+  @Get('interests')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List available interests',
+    description: 'Get all interests users can attach to their profile',
+  })
+  @ApiSuccessResponse(InterestDto, {
+    description: 'Interests retrieved successfully',
+    status: 200,
+    isArray: true,
+  })
+  async getInterests() {
+    const interests = await this.profileService.getInterests();
+    return ResponseBuilder.success(
+      interests,
+      'Interests fetched successfully',
       HttpStatus.OK,
     );
   }

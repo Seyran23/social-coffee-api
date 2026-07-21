@@ -96,14 +96,40 @@ export class ProfileService {
     userId: string,
     dto: UpdateProfileDto,
   ): Promise<UserProfile> {
-    const user = await this.database.user.update({
-      where: { id: userId },
-      data: {
-        ...(dto.firstName && { firstName: sanitizePlainText(dto.firstName) }),
-        ...(dto.lastName && { lastName: sanitizePlainText(dto.lastName) }),
-        ...(dto.bio !== undefined && { bio: sanitizePlainText(dto.bio) }),
-      },
-      select: { ...PROFILE_SELECT, email: true },
+    if (dto.interestIds) {
+      const existingCount = await this.database.interest.count({
+        where: { id: { in: dto.interestIds } },
+      });
+      if (existingCount !== dto.interestIds.length) {
+        throw new BadRequestException(PROFILE_MESSAGES.INVALID_INTEREST_IDS);
+      }
+    }
+
+    const user = await this.database.$transaction(async tx => {
+      if (dto.interestIds) {
+        await tx.userInterest.deleteMany({ where: { userId } });
+
+        if (dto.interestIds.length > 0) {
+          await tx.userInterest.createMany({
+            data: dto.interestIds.map(interestId => ({
+              userId,
+              interestId,
+            })),
+          });
+        }
+      }
+
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(dto.firstName && { firstName: sanitizePlainText(dto.firstName) }),
+          ...(dto.lastName && { lastName: sanitizePlainText(dto.lastName) }),
+          ...(dto.bio !== undefined && { bio: sanitizePlainText(dto.bio) }),
+          ...(dto.gender && { gender: dto.gender }),
+          ...(dto.birthDate && { birthDate: new Date(dto.birthDate) }),
+        },
+        select: { ...PROFILE_SELECT, email: true },
+      });
     });
 
     await this.redis.invalidateProfile(userId);
@@ -111,6 +137,14 @@ export class ProfileService {
     this.logger.log(`Profile updated for user: ${userId}`);
 
     return mapToProfile(user);
+  }
+
+  async getInterests(): Promise<{ id: string; name: string }[]> {
+    const interests = await this.database.interest.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+    return interests;
   }
 
   async uploadProfileImage(
