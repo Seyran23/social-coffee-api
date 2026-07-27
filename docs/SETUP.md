@@ -62,13 +62,17 @@ npm run prisma:migrate
 npm run db:seed
 ```
 
-**Add dev test fixtures** (10 test users + a test venue):
+**Add dev test fixtures** — 5 venues, ~46 users, presence, chats, analytics data,
+and a ready-to-tap match:
 
 ```bash
 npm run db:seed:dev
 ```
 
 Test users all have the password `Password123!`. The primary test account is `me@test.com`.
+
+> For what the seed contains, how to keep seeded users "present", and how to test
+> each feature, see **[LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)**.
 
 ---
 
@@ -117,14 +121,17 @@ E2E tests create and clean up their own data. They use `DATABASE_URL` from your 
 
 ## 6. Useful scripts
 
-| Script                  | What it does                          |
-| ----------------------- | ------------------------------------- |
-| `npm run lint`          | ESLint with auto-fix                  |
-| `npm run type-check`    | TypeScript check with no emit         |
-| `npm run prisma:studio` | Prisma Studio (visual DB browser)     |
-| `npm run prisma:reset`  | Drop DB, re-run migrations, re-seed   |
-| `npm run db:seed:dev`   | Seed dev fixtures on top of base seed |
-| `npm run format`        | Prettier format                       |
+| Script                          | What it does                                     |
+| ------------------------------- | ------------------------------------------------ |
+| `npm run lint`                  | ESLint with auto-fix                             |
+| `npm run type-check`            | TypeScript check with no emit                    |
+| `npm run precheck`              | Lint + type-check + unit tests                   |
+| `npm run prisma:studio`         | Prisma Studio (visual DB browser)                |
+| `npm run db:seed:dev`           | All dev fixtures (idempotent — re-run to reset)  |
+| `npm run db:reset:dev`          | Drop DB, re-run migrations, re-seed from scratch |
+| `npm run db:presence:keepalive` | Keep seeded users "present" while testing        |
+| `npm run db:cleanup:test-data`  | Remove seeded test data                          |
+| `npm run format`                | Prettier format                                  |
 
 ---
 
@@ -176,8 +183,18 @@ src/
 
 prisma/
 ├── schema.prisma
-├── seed.ts                 # Reference data (interests + admin)
-├── seed-dev.ts             # Dev-only test fixtures
+├── seed.ts                 # Base reference data (interests + admin)
+├── seed/                   # Dev fixtures, one module per concern
+│   ├── index.ts            #   orchestrator — `npm run db:seed:dev`
+│   ├── config.ts           #   shared constants, Redis client, safety guards
+│   ├── venues.ts           #   venues + QR codes
+│   ├── users.ts            #   test accounts
+│   ├── presence.ts         #   Redis check-ins
+│   ├── chats.ts            #   chat sessions + messages
+│   ├── analytics.ts        #   venue owners, visits/views/campaign
+│   └── matches.ts          #   armed like → match scenario
+├── keep-presence-alive.ts  # Keeps seeded presence fresh while testing
+├── cleanup-test-data.ts    # Removes seeded data
 └── migrations/
 
 test/

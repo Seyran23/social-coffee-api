@@ -1,49 +1,16 @@
-/* eslint-disable no-console */
-
-import {
-  Gender,
-  LookingFor,
-  PrismaClient,
-  Role,
-  VenueStatus,
-} from '@prisma/client';
+import { Gender, LookingFor, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+import { PASSWORD, prisma, step } from './config';
 
-const PASSWORD = 'Password123!';
-
-async function getInterestIds(): Promise<Record<string, string>> {
-  const interests = await prisma.interest.findMany({
-    select: { id: true, name: true },
-  });
-  if (interests.length === 0) {
-    throw new Error('No interests found. Run npm run db:seed first.');
-  }
-  return Object.fromEntries(interests.map(i => [i.name, i.id]));
-}
-
-async function seedTestVenue(): Promise<void> {
-  await prisma.venue.upsert({
-    where: { id: 'test-venue-seed-id-000001' },
-    update: {},
-    create: {
-      id: 'test-venue-seed-id-000001',
-      name: 'The Dev Café',
-      mapUrl: 'https://maps.google.com/?q=51.5074,-0.1278',
-      latitude: 51.5074,
-      longitude: -0.1278,
-      geofenceMeters: 150,
-      status: VenueStatus.ACTIVE,
-    },
-  });
-  console.log('Test venue seeded: The Dev Café');
-}
-
-async function seedTestUsers(interests: Record<string, string>): Promise<void> {
-  const passwordHash = await bcrypt.hash(PASSWORD, 12);
-
-  const users: Array<Parameters<typeof prisma.user.upsert>[0]> = [
+// Hand-written profiles — kept as-is, "me@test.com" is intentionally left
+// unassigned to any venue below so you can check it in yourself via a real
+// QR scan and see everyone else already there.
+function handWrittenUsers(
+  interests: Record<string, string>,
+  passwordHash: string,
+): Array<Parameters<typeof prisma.user.upsert>[0]> {
+  return [
     {
       where: { email: 'me@test.com' },
       update: {},
@@ -347,25 +314,139 @@ async function seedTestUsers(interests: Record<string, string>): Promise<void> {
       },
     },
   ];
+}
 
-  for (const args of users) {
-    await prisma.user.upsert(args);
+// Names/bios below are just a pool to combine, not literal one-off profiles —
+// this generates realistic-but-varied filler people so 5 venues can each
+// have a full crowd without hand-writing dozens of near-identical blocks.
+const GENERATED_PEOPLE: Array<{ name: string; gender: Gender }> = [
+  { name: 'Marcus', gender: Gender.MALE },
+  { name: 'Daniel', gender: Gender.MALE },
+  { name: 'Ethan', gender: Gender.MALE },
+  { name: 'Noah', gender: Gender.MALE },
+  { name: 'Lucas', gender: Gender.MALE },
+  { name: 'Ryan', gender: Gender.MALE },
+  { name: 'Adam', gender: Gender.MALE },
+  { name: 'Kevin', gender: Gender.MALE },
+  { name: 'Tomas', gender: Gender.MALE },
+  { name: 'Felix', gender: Gender.MALE },
+  { name: 'Grace', gender: Gender.FEMALE },
+  { name: 'Nina', gender: Gender.FEMALE },
+  { name: 'Chloe', gender: Gender.FEMALE },
+  { name: 'Ava', gender: Gender.FEMALE },
+  { name: 'Zoe', gender: Gender.FEMALE },
+  { name: 'Mia', gender: Gender.FEMALE },
+  { name: 'Ella', gender: Gender.FEMALE },
+  { name: 'Sofia', gender: Gender.FEMALE },
+  { name: 'Lily', gender: Gender.FEMALE },
+  { name: 'Anna', gender: Gender.FEMALE },
+  { name: 'Robin', gender: Gender.OTHER },
+  { name: 'Jordan', gender: Gender.OTHER },
+  { name: 'Taylor', gender: Gender.OTHER },
+];
+
+const GENERATED_LAST_NAMES = [
+  'Walker',
+  'Bennett',
+  'Hughes',
+  'Foster',
+  'Reed',
+  'Cole',
+  'Brooks',
+  'Ward',
+  'Bailey',
+  'Price',
+];
+
+const GENERATED_BIOS = [
+  'Always chasing the next great espresso.',
+  'Here for good conversation and better coffee.',
+  'Remote worker, professional people-watcher.',
+  'New in town, looking to meet locals.',
+  'Coffee snob in recovery. Ask me about pour-overs.',
+  'Weekend hiker, weekday desk jockey.',
+  'Trying every café in the city, one cup at a time.',
+  'Bookworm who needed an excuse to leave the house.',
+  'Between meetings, always up for a chat.',
+  'Plant parent, coffee enthusiast, occasional gamer.',
+];
+
+const LOOKING_FOR_VALUES = Object.values(LookingFor);
+const PREFERRED_GENDERS = [Gender.MALE, Gender.FEMALE, Gender.OTHER];
+
+function generatedUsers(
+  count: number,
+  interests: Record<string, string>,
+  passwordHash: string,
+): Array<Parameters<typeof prisma.user.upsert>[0]> {
+  const interestNames = Object.keys(interests);
+
+  return Array.from({ length: count }, (_, i) => {
+    const person = GENERATED_PEOPLE[i % GENERATED_PEOPLE.length];
+    const lastName =
+      GENERATED_LAST_NAMES[(i * 3) % GENERATED_LAST_NAMES.length];
+    const age = 19 + (i % 27);
+    const birthDate = new Date(2026 - age, i % 12, (i % 27) + 1);
+    const email = `${person.name.toLowerCase()}${i}@test.com`;
+
+    const pickedInterests = [
+      interestNames[i % interestNames.length],
+      interestNames[(i + 4) % interestNames.length],
+      interestNames[(i + 8) % interestNames.length],
+    ];
+
+    return {
+      where: { email },
+      update: {},
+      create: {
+        firstName: person.name,
+        lastName,
+        email,
+        passwordHash,
+        gender: person.gender,
+        birthDate,
+        bio: GENERATED_BIOS[i % GENERATED_BIOS.length],
+        role: Role.USER,
+        preference: {
+          create: {
+            minAge: Math.max(18, age - 6),
+            maxAge: age + 8,
+            preferredGender: PREFERRED_GENDERS[i % PREFERRED_GENDERS.length],
+            lookingFor: [
+              LOOKING_FOR_VALUES[i % LOOKING_FOR_VALUES.length],
+              LOOKING_FOR_VALUES[(i + 3) % LOOKING_FOR_VALUES.length],
+            ],
+          },
+        },
+        userInterests: {
+          create: pickedInterests.map(name => ({
+            interestId: interests[name],
+          })),
+        },
+      },
+    };
+  });
+}
+/**
+ * Create every test account. Returns an email -> id map the later steps use to
+ * decide who is checked in where.
+ */
+export async function seedUsers(
+  interests: Record<string, string>,
+): Promise<Record<string, string>> {
+  const passwordHash = await bcrypt.hash(PASSWORD, 12);
+
+  const allUsers = [
+    ...handWrittenUsers(interests, passwordHash),
+    ...generatedUsers(30, interests, passwordHash),
+  ];
+
+  const emailToId: Record<string, string> = {};
+  for (const args of allUsers) {
+    const user = await prisma.user.upsert(args);
+    emailToId[user.email] = user.id;
   }
 
-  console.log(`Seeded ${users.length} test users (password: ${PASSWORD})`);
+  step(`${allUsers.length} test users (password: ${PASSWORD})`);
+  return emailToId;
 }
-
-async function main(): Promise<void> {
-  console.log('Starting dev seed...');
-  const interests = await getInterestIds();
-  await seedTestVenue();
-  await seedTestUsers(interests);
-  console.log('Dev seed complete.');
-}
-
-main()
-  .catch(e => {
-    console.error('Dev seed failed:', e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());

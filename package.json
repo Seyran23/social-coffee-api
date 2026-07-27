@@ -26,9 +26,12 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed-dev.ts",
+    "db:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed/index.ts",
+    "db:presence:keepalive": "ts-node prisma/keep-presence-alive.ts",
+    "db:cleanup:test-data": "ts-node prisma/cleanup-test-data.ts",
     "prepare": "husky",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:reset:dev": "prisma migrate reset --force && npm run db:seed:dev"
   },
   "dependencies": {
     "tsconfig-paths": "^4.2.0",

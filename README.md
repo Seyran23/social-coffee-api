@@ -29,14 +29,17 @@ If you’d like to explore or contribute to Social Coffee, see the full setup gu
 
 ## 📚 Documentation
 
-| Doc                                                            | Description                                                         |
-| -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [Architecture](./docs/ARCHITECTURE.md)                         | System, ERD, auth, chat, and presence flow diagrams                 |
-| [Setup Guide](./docs/SETUP.md)                                 | Install, configure, and run the project                             |
-| [Integration Guide](./docs/INTEGRATION_GUIDE.md)               | Full end-to-end user journey (REST + WebSocket)                     |
-| [Presence WebSocket Guide](./docs/PRESENCE_WEBSOCKET_GUIDE.md) | `/presence` namespace — venue feed, join/leave events, heartbeat    |
-| [Chat WebSocket Guide](./docs/CHAT_WEBSOCKET_GUIDE.md)         | `/chat` namespace — messaging, typing indicators, session lifecycle |
-| [API Reference (Swagger)](http://localhost:8000/docs)          | Interactive REST API docs (server must be running)                  |
+| Doc                                                            | Description                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [Project Overview](./docs/PROJECT_OVERVIEW.md)                 | Product concept, tech stack, data model, business rules — self-contained context for another repo/agent |
+| [Mobile Integration Guide](./docs/MOBILE_INTEGRATION_GUIDE.md) | Flat REST + WebSocket reference for a mobile client, incl. the refresh-token cookie gotcha              |
+| [Architecture](./docs/ARCHITECTURE.md)                         | System, ERD, auth, chat, and presence flow diagrams                                                     |
+| [Setup Guide](./docs/SETUP.md)                                 | Install, configure, and run the project                                                                 |
+| [Local Development](./docs/LOCAL_DEVELOPMENT.md)               | **Seed test data and exercise every feature locally** — start here                                      |
+| [Integration Guide](./docs/INTEGRATION_GUIDE.md)               | Full end-to-end user journey (REST + WebSocket)                                                         |
+| [Presence WebSocket Guide](./docs/PRESENCE_WEBSOCKET_GUIDE.md) | `/presence` namespace — venue feed, join/leave events, heartbeat                                        |
+| [Chat WebSocket Guide](./docs/CHAT_WEBSOCKET_GUIDE.md)         | `/chat` namespace — messaging, typing indicators, session lifecycle                                     |
+| [API Reference (Swagger)](http://localhost:8000/docs)          | Interactive REST API docs (server must be running)                                                      |
 
 ---
 
