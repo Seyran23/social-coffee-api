@@ -64,6 +64,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
 
+# Generated QR codes from prisma/seed-dev.ts — regenerate via db:seed:dev
+/prisma/seed-output/
+
 # Stray vitest artifact (sometimes created inside src/modules/)
 src/modules/node_modules/
 src/modules/.vite/
