@@ -14,8 +14,8 @@ export interface CachedChatSession {
   user2Id: string;
   venueId: string;
   status: ChatSessionStatus;
-  startedAt: number;
-  expiresAt: number;
+  startedAt: number | null;
+  expiresAt: number | null;
   user1?: { id: string; firstName: string; lastName: string };
   user2?: { id: string; firstName: string; lastName: string };
   venue?: { id: string; name: string };
@@ -73,8 +73,8 @@ export class RedisService implements OnModuleDestroy {
       user2Id: string;
       venueId: string;
       status: string;
-      startedAt: number;
-      expiresAt: number;
+      startedAt: number | null;
+      expiresAt: number | null;
 
       user1?: { id: string; firstName: string; lastName: string };
       user2?: { id: string; firstName: string; lastName: string };
@@ -207,6 +207,10 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
+  async refreshUserVenuePresence(userId: string): Promise<void> {
+    await this.redis.expire(`user:${userId}:venue`, REDIS_TTL.VENUE_PRESENCE);
+  }
+
   async removeUserFromVenue(userId: string, venueId: string): Promise<void> {
     await this.redis.srem(`venue:${venueId}:users`, userId);
     await this.redis.del(`user:${userId}:venue`);
@@ -290,6 +294,38 @@ export class RedisService implements OnModuleDestroy {
         error,
       );
     }
+  }
+
+  // GENERIC JSON CACHE
+
+  async cacheJson<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    try {
+      await this.redis.setex(key, ttlSeconds, JSON.stringify(value));
+    } catch (error) {
+      this.logger.error(`Failed to cache JSON for key ${key}`, error);
+    }
+  }
+
+  async getJson<T>(key: string): Promise<T | null> {
+    try {
+      const data = await this.redis.get(key);
+      return data ? (JSON.parse(data) as T) : null;
+    } catch (error) {
+      this.logger.error(`Failed to read cached JSON for key ${key}`, error);
+      return null;
+    }
+  }
+
+  async setWithTtl(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    await this.redis.setex(key, ttlSeconds, value);
+  }
+
+  getTtl(key: string): Promise<number> {
+    return this.redis.ttl(key);
   }
 
   // STATISTICS

@@ -11,6 +11,8 @@ export const REDIS_TTL = {
 
   PROFILE_CACHE: 300, // 5 minutes
 
+  ANALYTICS_CACHE: 900, // 15 minutes
+
   TYPING_INDICATOR: 5, // 5 seconds
 
   STATS_RETENTION: 86400 * 30, // 30 days
