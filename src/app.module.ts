@@ -13,6 +13,7 @@ import { PresenceModule } from '@/modules/presence/presence.module';
 import { ProfileModule } from '@/modules/profile/profile.module';
 import { RedisModule } from '@/modules/redis/redis.module';
 import { VenueModule } from '@/modules/venue/venue.module';
+import { VenueAnalyticsModule } from '@/modules/venue-analytics/venue-analytics.module';
 
 import { AppController } from './app.controller';
 import { LoggerModule } from './common/logger/logger.module';
@@ -26,8 +27,8 @@ import { HealthModule } from './modules/health/health.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
         {
-          ttl: 60000,
-          limit: 1000,
+          ttl: config.get<number>('THROTTLE_TTL_MS') ?? 60_000,
+          limit: config.get<number>('THROTTLE_LIMIT') ?? 120,
         },
       ],
     }),
@@ -47,6 +48,7 @@ import { HealthModule } from './modules/health/health.module';
     InteractionModule,
     PresenceModule,
     ChatModule,
+    VenueAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
