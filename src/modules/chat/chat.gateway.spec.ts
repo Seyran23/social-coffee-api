@@ -206,11 +206,14 @@ describe('ChatGateway', () => {
 
     it('should broadcast message to chat room on success', async () => {
       vi.spyOn(chatService, 'sendMessage').mockResolvedValue({
-        id: 'msg-1',
-        chatSessionId: 'chat-1',
-        senderId: 'user-1',
-        content: 'hello',
-        createdAt: new Date(),
+        message: {
+          id: 'msg-1',
+          chatSessionId: 'chat-1',
+          senderId: 'user-1',
+          content: 'hello',
+          createdAt: new Date(),
+        },
+        countdown: null,
       } as any);
 
       await chatGateway.handleSendMessage(mockClient, {
@@ -230,6 +233,40 @@ describe('ChatGateway', () => {
         expect.objectContaining({
           id: 'msg-1',
           content: 'hello',
+        }),
+      );
+      // No countdown returned → no countdown_started emitted.
+      expect(mockServer.emit).not.toHaveBeenCalledWith(
+        CHAT_EVENTS.COUNTDOWN_STARTED,
+        expect.anything(),
+      );
+    });
+
+    it('should emit countdown_started when the first message starts the clock', async () => {
+      const startedAt = new Date();
+      const expiresAt = new Date(startedAt.getTime() + 600000);
+      vi.spyOn(chatService, 'sendMessage').mockResolvedValue({
+        message: {
+          id: 'msg-1',
+          chatSessionId: 'chat-1',
+          senderId: 'user-1',
+          content: 'hi',
+          createdAt: startedAt,
+        },
+        countdown: { startedAt, expiresAt },
+      } as any);
+
+      await chatGateway.handleSendMessage(mockClient, {
+        chatSessionId: 'chat-1',
+        content: 'hi',
+      });
+
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        CHAT_EVENTS.COUNTDOWN_STARTED,
+        expect.objectContaining({
+          chatSessionId: 'chat-1',
+          startedAt,
+          expiresAt,
         }),
       );
     });

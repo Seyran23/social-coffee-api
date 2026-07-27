@@ -72,6 +72,7 @@ describe('ChatService', () => {
               findFirst: vi.fn(),
               findMany: vi.fn(),
               update: vi.fn(),
+              updateMany: vi.fn(),
             },
             message: {
               create: vi.fn(),
@@ -199,7 +200,56 @@ describe('ChatService', () => {
         content,
         timestamp: mockCreatedMessage.createdAt.getTime(),
       });
-      expect(result).toEqual(mockCreatedMessage);
+      expect(result.message).toEqual(mockCreatedMessage);
+      expect(result.countdown).toBeNull();
+    });
+
+    it('should start the countdown on the first message to a PENDING chat', async () => {
+      vi.spyOn(redisService, 'getChatSession').mockResolvedValue({
+        user1Id: 'user-1',
+        user2Id: 'user-2',
+      } as any);
+
+      vi.spyOn(prismaService.chatSession, 'findUnique').mockResolvedValue({
+        id: chatSessionId,
+        status: ChatSessionStatus.PENDING,
+        startedAt: null,
+        expiresAt: null,
+      } as any);
+
+      vi.spyOn(prismaService.chatSession, 'update').mockResolvedValue({
+        id: chatSessionId,
+        user1Id: 'user-1',
+        user2Id: 'user-2',
+        venueId: 'venue-1',
+        user1: { id: 'user-1', firstName: 'A', lastName: 'A' },
+        user2: { id: 'user-2', firstName: 'B', lastName: 'B' },
+        venue: { id: 'venue-1', name: 'Brew Lab' },
+      } as any);
+
+      vi.spyOn(prismaService.message, 'create').mockResolvedValue({
+        id: 'msg-1',
+        chatSessionId,
+        senderId,
+        content,
+        createdAt: new Date(),
+      } as any);
+
+      const result = await chatService.sendMessage(sendMessagePayload);
+
+      expect(prismaService.chatSession.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: chatSessionId },
+          data: expect.objectContaining({
+            status: ChatSessionStatus.ACTIVE,
+          }),
+        }),
+      );
+      expect(redisService.setChatSession).toHaveBeenCalled();
+      expect(result.countdown).not.toBeNull();
+      expect(result.countdown!.expiresAt.getTime()).toBeGreaterThan(
+        result.countdown!.startedAt.getTime(),
+      );
     });
 
     it('should throw NotFoundException if session disappears after validateParticipant', async () => {
@@ -640,7 +690,9 @@ describe('ChatService', () => {
       expect(prismaService.chatSession.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            status: ChatSessionStatus.ACTIVE,
+            status: {
+              in: [ChatSessionStatus.PENDING, ChatSessionStatus.ACTIVE],
+            },
             OR: [{ user1Id: 'user-1' }, { user2Id: 'user-1' }],
           }),
         }),
@@ -666,6 +718,64 @@ describe('ChatService', () => {
       const result = await chatService.getMyChatSessions('user-1');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  // =========================================================================
+  // endUserChats (flush on venue-leave)
+  // =========================================================================
+
+  describe('endUserChats', () => {
+    it('ends every PENDING/ACTIVE chat for the user and clears Redis', async () => {
+      vi.spyOn(prismaService.chatSession, 'findMany').mockResolvedValue([
+        { id: 'chat-1', user1Id: 'user-1', user2Id: 'user-2' },
+        { id: 'chat-2', user1Id: 'user-3', user2Id: 'user-1' },
+      ] as any);
+      const updateMany = vi
+        .spyOn(prismaService.chatSession, 'updateMany')
+        .mockResolvedValue({ count: 2 } as any);
+
+      const result = await chatService.endUserChats('user-1');
+
+      expect(prismaService.chatSession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: {
+              in: [ChatSessionStatus.PENDING, ChatSessionStatus.ACTIVE],
+            },
+          }),
+        }),
+      );
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: ChatSessionStatus.ENDED },
+        }),
+      );
+      expect(redisService.deleteChatSession).toHaveBeenCalledWith(
+        'chat-1',
+        'user-1',
+        'user-2',
+      );
+      expect(redisService.deleteChatSession).toHaveBeenCalledWith(
+        'chat-2',
+        'user-3',
+        'user-1',
+      );
+      expect(result).toEqual([
+        { chatSessionId: 'chat-1' },
+        { chatSessionId: 'chat-2' },
+      ]);
+    });
+
+    it('is a no-op when the user has no live chats', async () => {
+      vi.spyOn(prismaService.chatSession, 'findMany').mockResolvedValue(
+        [] as any,
+      );
+
+      const result = await chatService.endUserChats('user-1');
+
+      expect(result).toEqual([]);
+      expect(redisService.deleteChatSession).not.toHaveBeenCalled();
     });
   });
 

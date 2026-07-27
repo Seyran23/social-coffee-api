@@ -2,6 +2,7 @@ export const CHAT_MESSAGES = {
   // Success messages
   MESSAGE_SENT: 'Message sent successfully',
   CHAT_ENDED: 'Chat session ended successfully',
+  CHAT_ENDED_LEFT_VENUE: 'Chat ended — a participant left the venue',
   MESSAGES_RETRIEVED: 'Messages retrieved successfully',
   SESSION_RETRIEVED: 'Chat session retrieved successfully',
 

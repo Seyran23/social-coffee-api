@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { ChatGateway } from '@/modules/chat/chat.gateway';
 import { PresenceGateway } from '@/modules/presence/presence.gateway';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_CLEANUP } from '@/modules/venue/constants/cleanup';
@@ -11,6 +12,7 @@ export class VenueCleanupService {
   constructor(
     private readonly redis: RedisService,
     private readonly presenceGateway: PresenceGateway,
+    private readonly chatGateway: ChatGateway,
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext(VenueCleanupService.name);
@@ -42,6 +44,7 @@ export class VenueCleanupService {
       if (!isActive) {
         await this.redis.removeUserFromVenue(userId, venueId);
         await this.presenceGateway.broadcastUserLeft(userId, venueId);
+        await this.chatGateway.flushUserChats(userId);
 
         this.logger.log(
           `[CLEANUP] Removed stale user ${userId} from venue ${venueId}`,

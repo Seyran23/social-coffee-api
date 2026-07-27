@@ -159,7 +159,7 @@ export class ChatGateway
     }
 
     try {
-      const message = await this.chatService.sendMessage({
+      const { message, countdown } = await this.chatService.sendMessage({
         chatSessionId,
         senderId: userId,
         content,
@@ -172,6 +172,17 @@ export class ChatGateway
         content: message.content,
         createdAt: message.createdAt,
       });
+
+      if (countdown) {
+        this.server
+          .to(`chat:${chatSessionId}`)
+          .emit(CHAT_EVENTS.COUNTDOWN_STARTED, {
+            chatSessionId,
+            startedAt: countdown.startedAt,
+            expiresAt: countdown.expiresAt,
+            timestamp: Date.now(),
+          });
+      }
 
       this.logger.log(
         `Message sent in chat ${data.chatSessionId} by user ${userId}`,
@@ -234,6 +245,24 @@ export class ChatGateway
     } catch (error) {
       this.logger.error(`Error ending chat ${chatSessionId}:`, error);
       this.emitError(client, error.message ?? 'Failed to end chat');
+    }
+  }
+
+  async flushUserChats(userId: string): Promise<void> {
+    try {
+      const ended = await this.chatService.endUserChats(userId);
+
+      for (const { chatSessionId } of ended) {
+        this.server.to(`chat:${chatSessionId}`).emit(CHAT_EVENTS.CHAT_ENDED, {
+          chatSessionId,
+          endedBy: userId,
+          message: CHAT_MESSAGES.CHAT_ENDED_LEFT_VENUE,
+          reason: 'PARTICIPANT_LEFT_VENUE',
+          timestamp: Date.now(),
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Error flushing chats for user ${userId}:`, error);
     }
   }
 

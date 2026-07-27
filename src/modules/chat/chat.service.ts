@@ -24,9 +24,9 @@ import { ChatSessionResponseDto } from '@/modules/chat/dto/response/chat-session
 import { MessageResponseDto } from '@/modules/chat/dto/response/message-response.dto';
 import { ChatSessionWithRelations } from '@/modules/chat/interfaces/chat-with-relations.interface';
 import { MessagesOptions } from '@/modules/chat/interfaces/message-options.interface';
+import { CHAT_SESSION_DURATION_MS } from '@/modules/interaction/constants/chat-duration';
 import { RedisService } from '@/modules/redis/redis.service';
 
-// Common shape both Prisma sessions and Redis-cached sessions can satisfy.
 type SessionLikeForMapping = Pick<
   ChatSession,
   'id' | 'status' | 'user1Id' | 'user2Id'
@@ -82,8 +82,8 @@ export class ChatService {
         user2Id: session.user2Id,
         venueId: session.venueId,
         status: session.status,
-        startedAt: session.startedAt?.getTime() ?? Date.now(),
-        expiresAt: session.expiresAt?.getTime() ?? Date.now(),
+        startedAt: session.startedAt?.getTime() ?? null,
+        expiresAt: session.expiresAt?.getTime() ?? null,
         user1: session.user1
           ? {
               id: session.user1.id,
@@ -113,7 +113,7 @@ export class ChatService {
     venueId?: string,
   ): Promise<ChatSessionResponseDto[]> {
     const where: Prisma.ChatSessionWhereInput = {
-      status: ChatSessionStatus.ACTIVE,
+      status: { in: [ChatSessionStatus.PENDING, ChatSessionStatus.ACTIVE] },
       OR: [{ user1Id: userId }, { user2Id: userId }],
     };
 
@@ -218,7 +218,10 @@ export class ChatService {
     chatSessionId: string;
     senderId: string;
     content: string;
-  }): Promise<MessageResponseDto> {
+  }): Promise<{
+    message: MessageResponseDto;
+    countdown: { startedAt: Date; expiresAt: Date } | null;
+  }> {
     const { chatSessionId, senderId, content } = data;
 
     await this.validateParticipant(chatSessionId, senderId);
@@ -231,7 +234,10 @@ export class ChatService {
       throw new NotFoundException(CHAT_MESSAGES.CHAT_NOT_FOUND);
     }
 
-    if (session.status !== ChatSessionStatus.ACTIVE) {
+    if (
+      session.status === ChatSessionStatus.ENDED ||
+      session.status === ChatSessionStatus.EXPIRED
+    ) {
       throw new BadRequestException(CHAT_MESSAGES.CHAT_ALREADY_ENDED);
     }
 
@@ -243,6 +249,11 @@ export class ChatService {
     if (!safeContent) {
       throw new BadRequestException('Message content cannot be empty');
     }
+
+    const countdown =
+      session.status === ChatSessionStatus.PENDING
+        ? await this.startCountdown(chatSessionId)
+        : null;
 
     const message = await this.database.message.create({
       data: {
@@ -263,7 +274,47 @@ export class ChatService {
       `Message sent in chat ${chatSessionId} by user ${senderId}`,
     );
 
-    return message;
+    return { message, countdown };
+  }
+
+  private async startCountdown(
+    chatSessionId: string,
+  ): Promise<{ startedAt: Date; expiresAt: Date }> {
+    const startedAt = new Date();
+    const expiresAt = new Date(startedAt.getTime() + CHAT_SESSION_DURATION_MS);
+
+    const updated = await this.database.chatSession.update({
+      where: { id: chatSessionId },
+      data: {
+        status: ChatSessionStatus.ACTIVE,
+        startedAt,
+        expiresAt,
+      },
+      include: {
+        user1: { select: { id: true, firstName: true, lastName: true } },
+        user2: { select: { id: true, firstName: true, lastName: true } },
+        venue: { select: { id: true, name: true } },
+      },
+    });
+
+    if (updated.user1Id && updated.user2Id) {
+      await this.redis.setChatSession(chatSessionId, {
+        id: updated.id,
+        user1Id: updated.user1Id,
+        user2Id: updated.user2Id,
+        venueId: updated.venueId,
+        status: ChatSessionStatus.ACTIVE,
+        startedAt: startedAt.getTime(),
+        expiresAt: expiresAt.getTime(),
+        user1: updated.user1 ?? undefined,
+        user2: updated.user2 ?? undefined,
+        venue: updated.venue,
+      });
+    }
+
+    this.logger.log(`Countdown started for chat ${chatSessionId}`);
+
+    return { startedAt, expiresAt };
   }
 
   async getMessages(
@@ -324,6 +375,43 @@ export class ChatService {
     await this.redis.deleteChatSession(chatSessionId, user1Id!, user2Id!);
 
     this.logger.log(`Chat ${chatSessionId} ended by user ${userId}`);
+  }
+
+  async endUserChats(
+    userId: string,
+  ): Promise<Array<{ chatSessionId: string }>> {
+    const sessions = await this.database.chatSession.findMany({
+      where: {
+        status: { in: [ChatSessionStatus.PENDING, ChatSessionStatus.ACTIVE] },
+        OR: [{ user1Id: userId }, { user2Id: userId }],
+      },
+      select: { id: true, user1Id: true, user2Id: true },
+    });
+
+    if (sessions.length === 0) {
+      return [];
+    }
+
+    await this.database.chatSession.updateMany({
+      where: { id: { in: sessions.map(s => s.id) } },
+      data: { status: ChatSessionStatus.ENDED },
+    });
+
+    for (const session of sessions) {
+      if (session.user1Id && session.user2Id) {
+        await this.redis.deleteChatSession(
+          session.id,
+          session.user1Id,
+          session.user2Id,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Flushed ${sessions.length} chat(s) for user ${userId} (left venue)`,
+    );
+
+    return sessions.map(s => ({ chatSessionId: s.id }));
   }
 
   private async fetchChatSessionFromDatabase(
@@ -430,10 +518,6 @@ export class ChatService {
 
     const startedAt = this.toDate(session.startedAt);
     const expiresAt = this.toDate(session.expiresAt);
-
-    if (!startedAt || !expiresAt) {
-      throw new NotFoundException('Chat session timing is incomplete');
-    }
 
     return {
       id: session.id,
