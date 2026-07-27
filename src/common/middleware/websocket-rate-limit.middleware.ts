@@ -70,7 +70,7 @@ export class WsRateLimitMiddleware {
   }
 
   async checkEventRateLimit(userId: string): Promise<boolean> {
-    const { allowed, remaining } = await this.redis.checkRateLimit(
+    const { allowed } = await this.redis.checkRateLimit(
       `ws:events:${userId}`,
       this.config.maxEventsPerMinute,
       60, // 60 seconds

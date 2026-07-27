@@ -14,7 +14,6 @@ describe('TokenService', () => {
   let tokenService: TokenService;
   let jwtService: JwtService;
   let prismaService: PrismaService;
-  let configService: ConfigService;
 
   beforeEach(async () => {
     vi.mock('@paralleldrive/cuid2', () => ({
@@ -88,7 +87,6 @@ describe('TokenService', () => {
     tokenService = module.get<TokenService>(TokenService);
     jwtService = module.get<JwtService>(JwtService);
     prismaService = module.get<PrismaService>(PrismaService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   describe('generateTokens', () => {

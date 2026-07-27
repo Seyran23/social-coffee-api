@@ -14,7 +14,6 @@ describe('ProfileService', () => {
   let profileService: ProfileService;
   let prismaService: PrismaService;
   let redisService: RedisService;
-  let fileUploadService: FileUploadService;
 
   const mockDate = new Date('2000-01-01');
 
@@ -82,7 +81,6 @@ describe('ProfileService', () => {
     profileService = module.get<ProfileService>(ProfileService);
     prismaService = module.get<PrismaService>(PrismaService);
     redisService = module.get<RedisService>(RedisService);
-    fileUploadService = module.get<FileUploadService>(FileUploadService);
   });
 
   describe('getUserProfile', () => {
@@ -338,6 +336,90 @@ describe('ProfileService', () => {
 
       expect(result.profiles).toHaveLength(1);
       expect(result.profiles[0].id).toBe('user-2');
+    });
+  });
+
+  describe('getJoinAudience', () => {
+    it('returns only viewers whose preferences match the joiner, with a feed-shaped profile', async () => {
+      vi.spyOn(redisService, 'getCachedProfile').mockImplementation(
+        async (id: string) => {
+          if (id === 'joiner') {
+            return {
+              id: 'joiner',
+              firstName: 'Joe',
+              lastName: 'Iner',
+              birthDate: new Date('1995-06-15'), // male, ~30
+              gender: Gender.MALE,
+              bio: 'hi',
+              profileImageUrl: null,
+              interests: [],
+              preference: {
+                minAge: 18,
+                maxAge: 99,
+                preferredGender: null,
+                lookingFor: ['COFFEE_CHAT'],
+              },
+            } as any;
+          }
+          if (id === 'viewer-match') {
+            return {
+              id: 'viewer-match',
+              gender: Gender.FEMALE,
+              birthDate: new Date('1996-01-01'),
+              interests: [],
+              preference: {
+                minAge: 18,
+                maxAge: 40,
+                preferredGender: Gender.MALE, // joiner is MALE → match
+                lookingFor: [],
+              },
+            } as any;
+          }
+          if (id === 'viewer-nomatch') {
+            return {
+              id: 'viewer-nomatch',
+              gender: Gender.MALE,
+              birthDate: new Date('1996-01-01'),
+              interests: [],
+              preference: {
+                minAge: 18,
+                maxAge: 40,
+                preferredGender: Gender.FEMALE, // joiner is MALE → no match
+                lookingFor: [],
+              },
+            } as any;
+          }
+          return null;
+        },
+      );
+      vi.spyOn(redisService, 'getActiveUsersAtVenue').mockResolvedValueOnce([
+        'viewer-match',
+        'viewer-nomatch',
+      ]);
+
+      const result = await profileService.getJoinAudience('joiner', 'venue-1');
+
+      expect(result.recipientIds).toEqual(['viewer-match']);
+      // feed-shaped profile: no private preference leaked, lookingFor present
+      expect(result.profile.id).toBe('joiner');
+      expect(result.profile).not.toHaveProperty('preference');
+      expect(result.profile.lookingFor).toEqual(['COFFEE_CHAT']);
+    });
+
+    it('returns empty recipients when nobody else is at the venue', async () => {
+      vi.spyOn(redisService, 'getCachedProfile').mockResolvedValueOnce({
+        id: 'joiner',
+        birthDate: new Date('1995-06-15'),
+        gender: Gender.MALE,
+        interests: [],
+        preference: null,
+      } as any);
+      vi.spyOn(redisService, 'getActiveUsersAtVenue').mockResolvedValueOnce([]);
+
+      const result = await profileService.getJoinAudience('joiner', 'venue-1');
+
+      expect(result.recipientIds).toEqual([]);
+      expect(result.profile.id).toBe('joiner');
     });
   });
 
