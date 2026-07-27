@@ -1,6 +1,8 @@
 export const VENUE_MESSAGES = {
   VENUES_RETRIEVED: 'Venues retrieved successfully',
+  MY_VENUES_RETRIEVED: 'Your venues retrieved successfully',
   NEARBY_VENUES_RETRIEVED: 'Nearby venues retrieved successfully',
+  CURRENT_CHECK_IN_RETRIEVED: 'Current check-in retrieved successfully',
   VENUE_RETRIEVED: 'Venue retrieved successfully',
   VENUE_CREATED: 'Venue created successfully',
   VENUE_UPDATED: 'Venue updated successfully',
@@ -8,6 +10,9 @@ export const VENUE_MESSAGES = {
   VENUE_DELETED: 'Venue deleted successfully',
   QRCODE_GENERATED: 'QR code generated successfully',
   GEOFENCE_CHECKED: 'Geofence check completed',
+  OWNER_ASSIGNED: 'Venue owner assigned successfully',
+  OWNER_USER_NOT_FOUND: 'User to assign as owner was not found',
+  VIEW_RECORDED: 'Venue view recorded',
   CHECK_IN_SUCCESS: 'Successfully checked in to venue',
   CHECK_OUT_SUCCESS: 'Successfully checked out from venue',
 

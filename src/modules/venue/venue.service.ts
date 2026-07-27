@@ -3,10 +3,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Venue, VenueStatus } from '@prisma/client';
+import {
+  Prisma,
+  Role,
+  type Venue,
+  VenueStatus,
+  VisitSource,
+} from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
+import { ChatGateway } from '@/modules/chat/chat.gateway';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_DISCOVERY } from '@/modules/venue/constants/discovery';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
@@ -30,6 +37,7 @@ export class VenueService {
     private readonly database: PrismaService,
     private readonly logger: LoggerService,
     private readonly redis: RedisService,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   private async getVenueById(
@@ -48,6 +56,15 @@ export class VenueService {
     }
 
     return venue;
+  }
+
+  async getCurrentCheckIn(userId: string): Promise<Venue | null> {
+    const venueId = await this.redis.getUserCurrentVenue(userId);
+    if (!venueId) {
+      return null;
+    }
+
+    return this.database.venue.findUnique({ where: { id: venueId } });
   }
 
   async getVenue(id: string): Promise<VenueWithQRCode> {
@@ -75,6 +92,13 @@ export class VenueService {
 
     this.logger.log(`Successfully generated QR code for venue ID: ${id}`);
     return generateQRCodeDataURL(venue.id);
+  }
+
+  getVenuesByOwner(userId: string): Promise<Venue[]> {
+    return this.database.venue.findMany({
+      where: { ownerId: userId },
+      orderBy: { name: 'asc' },
+    });
   }
 
   async getNearbyVenues(query: GetNearbyVenuesQueryDto): Promise<Venue[]> {
@@ -154,6 +178,7 @@ export class VenueService {
           longitude: true,
           geofenceMeters: true,
           status: true,
+          ownerId: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -232,7 +257,7 @@ export class VenueService {
     id: string,
     updateVenueDto: UpdateVenueDto,
   ): Promise<Venue> {
-    const venue = await this.getVenueById(id, 'update');
+    await this.getVenueById(id, 'update');
 
     const updateData: Prisma.VenueUpdateInput = { ...updateVenueDto };
 
@@ -260,6 +285,36 @@ export class VenueService {
     });
 
     this.logger.log(`Successfully updated venue: ${updatedVenue.name} (${id})`);
+
+    return updatedVenue;
+  }
+
+  async assignOwner(venueId: string, userId: string): Promise<Venue> {
+    await this.getVenueById(venueId, 'owner assignment');
+
+    const user = await this.database.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(VENUE_MESSAGES.OWNER_USER_NOT_FOUND);
+    }
+
+    const [updatedVenue] = await this.database.$transaction([
+      this.database.venue.update({
+        where: { id: venueId },
+        data: { ownerId: userId },
+      }),
+      this.database.user.update({
+        where: { id: userId },
+        data: { role: Role.CAFE_MANAGER },
+      }),
+    ]);
+
+    this.logger.log(
+      `Assigned user ${userId} as owner of venue ${venueId} (promoted to CAFE_MANAGER)`,
+    );
 
     return updatedVenue;
   }
@@ -303,6 +358,8 @@ export class VenueService {
     }
 
     await this.performCheckOut(userId, venueId);
+
+    await this.chatGateway.flushUserChats(userId);
 
     this.logger.log(
       `User ${userId} successfully checked out from venue ${venueId}`,
@@ -389,12 +446,54 @@ export class VenueService {
       );
 
       await this.redis.removeUserFromVenue(userId, currentVenue);
+      await this.chatGateway.flushUserChats(userId);
     }
   }
 
   private async performCheckIn(userId: string, venueId: string): Promise<void> {
     await this.redis.addUserToVenue(userId, venueId);
     await this.redis.updateHeartbeat(userId);
+    await this.recordVisit(userId, venueId);
+  }
+
+  private async recordVisit(userId: string, venueId: string): Promise<void> {
+    try {
+      const now = new Date();
+      const activeCampaign = await this.database.campaign.findFirst({
+        where: { venueId, startDate: { lte: now }, endDate: { gte: now } },
+        orderBy: { startDate: 'desc' },
+        select: { id: true },
+      });
+
+      await this.database.visit.create({
+        data: {
+          venueId,
+          userId,
+          source: VisitSource.CHECK_IN,
+          campaignId: activeCampaign?.id ?? null,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to record visit for user ${userId} at venue ${venueId}`,
+        error,
+      );
+    }
+  }
+
+  async recordView(userId: string, venueId: string): Promise<void> {
+    await this.getVenueById(venueId, 'view');
+
+    try {
+      await this.database.venueView.create({
+        data: { venueId, userId },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to record view for user ${userId} at venue ${venueId}`,
+        error,
+      );
+    }
   }
 
   private async performCheckOut(

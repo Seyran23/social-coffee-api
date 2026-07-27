@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
+import { ChatGateway } from '@/modules/chat/chat.gateway';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import * as MapUtils from '@/modules/venue/utils/map-url.util';
@@ -69,6 +70,12 @@ describe('VenueService', () => {
             error: vi.fn(),
             warn: vi.fn(),
             debug: vi.fn(),
+          },
+        },
+        {
+          provide: ChatGateway,
+          useValue: {
+            flushUserChats: vi.fn(),
           },
         },
       ],
@@ -308,6 +315,34 @@ describe('VenueService', () => {
       });
 
       expect(result).toEqual([closer, farther]);
+    });
+  });
+
+  describe('getCurrentCheckIn', () => {
+    it('should return null when the user is not checked in anywhere', async () => {
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(null);
+
+      const result = await venueService.getCurrentCheckIn('user-1');
+
+      expect(result).toBeNull();
+      expect(prismaService.venue.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should return the venue the user is currently checked into', async () => {
+      const venue = { id: 'venue-1', name: 'Coffee Moffie' };
+      vi.spyOn(redisService, 'getUserCurrentVenue').mockResolvedValue(
+        'venue-1',
+      );
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(
+        venue as any,
+      );
+
+      const result = await venueService.getCurrentCheckIn('user-1');
+
+      expect(prismaService.venue.findUnique).toHaveBeenCalledWith({
+        where: { id: 'venue-1' },
+      });
+      expect(result).toEqual(venue);
     });
   });
 

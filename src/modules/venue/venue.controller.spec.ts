@@ -19,6 +19,7 @@ describe('VenueController', () => {
           useValue: {
             getVenues: vi.fn(),
             getNearbyVenues: vi.fn(),
+            getCurrentCheckIn: vi.fn(),
             getVenue: vi.fn(),
             getVenueQRCode: vi.fn(),
             createVenue: vi.fn(),
@@ -85,6 +86,38 @@ describe('VenueController', () => {
         ResponseBuilder.success(
           mockVenues,
           VENUE_MESSAGES.NEARBY_VENUES_RETRIEVED,
+        ),
+      );
+    });
+  });
+
+  describe('getCurrentCheckIn', () => {
+    it('should return the current venue when checked in', async () => {
+      const mockVenue = { id: 'venue-1', name: 'Cafe' };
+      vi.spyOn(venueService, 'getCurrentCheckIn').mockResolvedValue(
+        mockVenue as any,
+      );
+
+      const result = await venueController.getCurrentCheckIn('user-1');
+
+      expect(venueService.getCurrentCheckIn).toHaveBeenCalledWith('user-1');
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockVenue,
+          VENUE_MESSAGES.CURRENT_CHECK_IN_RETRIEVED,
+        ),
+      );
+    });
+
+    it('should return null when not checked in anywhere', async () => {
+      vi.spyOn(venueService, 'getCurrentCheckIn').mockResolvedValue(null);
+
+      const result = await venueController.getCurrentCheckIn('user-1');
+
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          null,
+          VENUE_MESSAGES.CURRENT_CHECK_IN_RETRIEVED,
         ),
       );
     });

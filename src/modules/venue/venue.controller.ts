@@ -20,6 +20,7 @@ import {
   ApiAllErrorResponses,
   ApiCommonErrorResponses,
   ApiErrorResponse,
+  ApiMessageResponse,
   ApiSuccessResponse,
   ApiValidationErrorResponse,
 } from '@/common/decorators/swagger.decorator';
@@ -27,6 +28,7 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { ResponseBuilder } from '@/common/utils/response-builder';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
+import { AssignOwnerDto } from '@/modules/venue/dto/request/assign-owner.dto';
 import { ChangeStatusDto } from '@/modules/venue/dto/request/change-status.dto';
 import { CheckInDto } from '@/modules/venue/dto/request/check-in.dto';
 import { CreateVenueDto } from '@/modules/venue/dto/request/create-venue.dto';
@@ -89,6 +91,44 @@ export class VenueController {
     return ResponseBuilder.success(
       venues,
       VENUE_MESSAGES.NEARBY_VENUES_RETRIEVED,
+    );
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Get venues I own',
+    description:
+      'Retrieve the venues owned by the authenticated user (their dashboard venues). Returns an empty array for users who own no venues.',
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.MY_VENUES_RETRIEVED,
+    isArray: true,
+  })
+  @ApiCommonErrorResponses()
+  async getMyVenues(@CurrentUser('userId') userId: string) {
+    const venues = await this.venueService.getVenuesByOwner(userId);
+    return ResponseBuilder.success(venues, VENUE_MESSAGES.MY_VENUES_RETRIEVED);
+  }
+
+  @Get('me/current')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Get my current check-in',
+    description:
+      "Retrieve the venue the authenticated user is currently checked into, or null if they aren't checked in anywhere. Lets a client restore check-in state after a relaunch instead of relying on in-memory state alone.",
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.CURRENT_CHECK_IN_RETRIEVED,
+  })
+  @ApiCommonErrorResponses()
+  async getCurrentCheckIn(@CurrentUser('userId') userId: string) {
+    const venue = await this.venueService.getCurrentCheckIn(userId);
+    return ResponseBuilder.success(
+      venue,
+      VENUE_MESSAGES.CURRENT_CHECK_IN_RETRIEVED,
     );
   }
 
@@ -222,7 +262,7 @@ export class VenueController {
 
   @Post(':id/checkin')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.USER)
+  @Roles(Role.USER, Role.ADMIN)
   @ApiBearerAuth('jwt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -246,7 +286,7 @@ export class VenueController {
 
   @Post(':id/checkout')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.USER)
+  @Roles(Role.USER, Role.ADMIN)
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary: 'Check-out from venue',
@@ -263,5 +303,50 @@ export class VenueController {
   ) {
     await this.venueService.checkOut(userId, venueId);
     return ResponseBuilder.success(null, VENUE_MESSAGES.CHECK_OUT_SUCCESS);
+  }
+
+  @Patch(':id/owner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Assign a venue owner',
+    description:
+      'Assign a user as the owner of a venue and promote them to CAFE_MANAGER. Grants that user access to the venue analytics dashboard. Requires admin role.',
+  })
+  @ApiSuccessResponse(VenueResponseDto, {
+    description: VENUE_MESSAGES.OWNER_ASSIGNED,
+  })
+  @ApiErrorResponse(404, VENUE_MESSAGES.OWNER_USER_NOT_FOUND)
+  @ApiCommonErrorResponses()
+  async assignVenueOwner(
+    @Param('id') venueId: string,
+    @Body() assignOwnerDto: AssignOwnerDto,
+  ) {
+    const venue = await this.venueService.assignOwner(
+      venueId,
+      assignOwnerDto.userId,
+    );
+    return ResponseBuilder.success(venue, VENUE_MESSAGES.OWNER_ASSIGNED);
+  }
+
+  @Post(':id/view')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.USER)
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Record a venue view',
+    description:
+      'Record that the current user opened this venue card/detail. Feeds the views → visits conversion funnel in venue analytics.',
+  })
+  @ApiMessageResponse(200, VENUE_MESSAGES.VIEW_RECORDED)
+  @ApiErrorResponse(404, VENUE_MESSAGES.VENUE_NOT_FOUND)
+  async recordVenueView(
+    @Param('id') venueId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    await this.venueService.recordView(userId, venueId);
+    return ResponseBuilder.success(null, VENUE_MESSAGES.VIEW_RECORDED);
   }
 }

@@ -58,6 +58,14 @@ export class VenueResponseDto {
   status: VenueStatus;
 
   @ApiProperty({
+    description:
+      'ID of the user who owns this venue (CAFE_MANAGER with dashboard access), or null',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    nullable: true,
+  })
+  ownerId: string | null;
+
+  @ApiProperty({
     description: 'Timestamp when the venue was created',
     example: '2024-01-15T10:30:00.000Z',
     type: Date,
