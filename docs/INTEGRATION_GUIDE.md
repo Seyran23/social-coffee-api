@@ -52,7 +52,7 @@ Content-Type: application/json
 }
 ```
 
-Save `accessToken`. It is used as a Bearer token for REST requests and as the WebSocket auth token. It expires after the configured `JWT_ACCESS_EXPIRATION` (default 15 minutes) — refresh it with `POST /api/v1/auth/refresh-token` before it expires.
+Save `accessToken`. It is used as a Bearer token for REST requests and as the WebSocket auth token. It expires after the configured `JWT_ACCESS_EXPIRATION` (default 15 minutes) — refresh it with `POST /api/v1/auth/refresh` before it expires.
 
 ---
 
@@ -233,7 +233,7 @@ This removes the user from the venue presence set in Redis. When the `/presence`
 Access tokens are short-lived. The refresh token (stored in an httpOnly cookie) can issue a new access token:
 
 ```http
-POST /api/v1/auth/refresh-token
+POST /api/v1/auth/refresh
 ```
 
 The browser sends the cookie automatically. The response contains a new `accessToken`. Update your socket auth and re-connect if the current socket was rejected:
@@ -241,7 +241,7 @@ The browser sends the cookie automatically. The response contains a new `accessT
 ```typescript
 presence.on('connect_error', async err => {
   if (err.message.includes('expired')) {
-    const res = await fetch('/api/v1/auth/refresh-token', { method: 'POST' });
+    const res = await fetch('/api/v1/auth/refresh', { method: 'POST' });
     const { data } = await res.json();
     presence.auth = { token: data.accessToken };
     presence.connect();

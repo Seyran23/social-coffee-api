@@ -1,6 +1,7 @@
 # WebSocket Chat Module - Complete Guide
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Architecture](#architecture)
 3. [Prerequisites](#prerequisites)
@@ -19,6 +20,7 @@
 The Chat module provides real-time WebSocket-based chat functionality using Socket.IO. It enables matched users to communicate in real-time within venue contexts.
 
 ### Features
+
 - ✅ JWT-based authentication
 - ✅ Real-time bidirectional messaging
 - ✅ Typing indicators
@@ -36,22 +38,26 @@ The Chat module provides real-time WebSocket-based chat functionality using Sock
 ### Components
 
 **ChatGateway** (`src/modules/chat/chat.gateway.ts`)
+
 - Handles WebSocket connections
 - Manages Socket.IO events
 - Applies authentication & rate limiting middleware
 
 **ChatService** (`src/modules/chat/chat.service.ts`)
+
 - Business logic for chat operations
 - Database interactions via Prisma
 - Message persistence
 
 **RedisService** (`src/modules/redis/redis.service.ts`)
+
 - Session management
 - Message caching
 - Socket ID mapping
 - Rate limiting
 
 ### Tech Stack
+
 - **NestJS** - Framework
 - **Socket.IO** - WebSocket library
 - **Redis** - Caching & session storage
@@ -91,17 +97,20 @@ CORS_ORIGIN='http://localhost:3000'
 ### 2. Running Services
 
 **Start Redis:**
+
 ```bash
 redis-server
 ```
 
 **Start PostgreSQL:**
+
 ```bash
 # Make sure PostgreSQL is running
 pg_ctl status
 ```
 
 **Start the application:**
+
 ```bash
 npm run start:dev
 ```
@@ -156,6 +165,7 @@ enum ChatSessionStatus {
 For testing purposes, you need to create an ACTIVE chat session in the database:
 
 **Option 1: Using SQL**
+
 ```sql
 -- Get user IDs
 SELECT id, email FROM users LIMIT 2;
@@ -188,9 +198,11 @@ INSERT INTO chat_sessions (
 ```
 
 **Option 2: Using Prisma Studio**
+
 ```bash
 npx prisma studio
 ```
+
 Navigate to `ChatSession` model and create a record with `status = 'ACTIVE'`.
 
 ---
@@ -211,11 +223,13 @@ The WebSocket gateway uses JWT-based authentication via middleware.
 The middleware looks for tokens in this order:
 
 1. **Handshake Auth** (Recommended)
+
    ```javascript
-   socket.auth.token = "YOUR_JWT_TOKEN"
+   socket.auth.token = 'YOUR_JWT_TOKEN';
    ```
 
 2. **Query Parameter**
+
    ```
    ws://localhost:8000/chat?token=YOUR_JWT_TOKEN
    ```
@@ -228,8 +242,9 @@ The middleware looks for tokens in this order:
 ### Getting a JWT Token
 
 **HTTP Request:**
+
 ```http
-POST /api/auth/login
+POST /api/v1/auth/login
 Content-Type: application/json
 
 {
@@ -239,11 +254,12 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
+  "success": true,
   "data": {
     "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refreshToken": "...",
     "user": {
       "id": "user-id",
       "email": "user@example.com"
@@ -252,7 +268,7 @@ Content-Type: application/json
 }
 ```
 
-Save the `accessToken` for WebSocket authentication.
+Note: the refresh token is **not** in the JSON body — it's set as an httpOnly cookie (`refreshToken`) on the response. Save the `accessToken` for WebSocket authentication.
 
 ---
 
@@ -267,9 +283,11 @@ ws://localhost:8000/chat
 ### Client → Server Events
 
 #### 1. **join_chat**
+
 Join a specific chat room and retrieve message history.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123"
@@ -279,15 +297,18 @@ Join a specific chat room and retrieve message history.
 **Response:** `chat_joined` event
 
 **Errors:**
+
 - `NOT_PARTICIPANT` - User is not part of this chat
 - `CHAT_NOT_FOUND` - Chat session doesn't exist
 
 ---
 
 #### 2. **send_message**
+
 Send a message in the chat.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123",
@@ -296,6 +317,7 @@ Send a message in the chat.
 ```
 
 **Validation:**
+
 - `content`: 1-500 characters
 - `chatSessionId`: Valid UUID
 
@@ -304,6 +326,7 @@ Send a message in the chat.
 **Response:** `message` event (broadcast to all participants)
 
 **Errors:**
+
 - `CHAT_NOT_FOUND` - Chat doesn't exist
 - `CHAT_ALREADY_ENDED` - Chat has ended
 - `CHAT_EXPIRED` - Chat session expired
@@ -312,9 +335,11 @@ Send a message in the chat.
 ---
 
 #### 3. **typing**
+
 Send typing indicator to partner.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123",
@@ -327,9 +352,11 @@ Send typing indicator to partner.
 ---
 
 #### 4. **end_chat**
+
 End the chat session.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123"
@@ -339,6 +366,7 @@ End the chat session.
 **Response:** `chat_ended` event (broadcast to all participants)
 
 **Effects:**
+
 - Updates session status to `ENDED`
 - Cleans up Redis cache
 - Removes user session mappings
@@ -348,9 +376,11 @@ End the chat session.
 ### Server → Client Events
 
 #### 1. **chat_joined**
+
 Emitted when successfully joined a chat.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123",
@@ -391,9 +421,11 @@ Emitted when successfully joined a chat.
 ---
 
 #### 2. **message**
+
 New message received.
 
 **Payload:**
+
 ```json
 {
   "id": "msg-123",
@@ -409,9 +441,11 @@ New message received.
 ---
 
 #### 3. **partner_typing**
+
 Partner is typing.
 
 **Payload:**
+
 ```json
 {
   "isTyping": true,
@@ -424,9 +458,11 @@ Partner is typing.
 ---
 
 #### 4. **chat_ended**
+
 Chat session has ended.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123",
@@ -441,9 +477,11 @@ Chat session has ended.
 ---
 
 #### 5. **session_ending_soon**
+
 Warning about upcoming chat expiration.
 
 **Payload:**
+
 ```json
 {
   "chatSessionId": "test-chat-123",
@@ -458,9 +496,11 @@ Warning about upcoming chat expiration.
 ---
 
 #### 6. **partner_left**
+
 Partner disconnected from chat.
 
 **Payload:**
+
 ```json
 {
   "message": "Your chat partner has left",
@@ -472,9 +512,11 @@ Partner disconnected from chat.
 ---
 
 #### 7. **error**
+
 Error occurred during operation.
 
 **Payload:**
+
 ```json
 {
   "message": "Error description here"
@@ -482,6 +524,7 @@ Error occurred during operation.
 ```
 
 **Common Errors:**
+
 - `Authentication token required`
 - `You are not a participant in this chat`
 - `Chat session has expired`
@@ -496,7 +539,7 @@ Error occurred during operation.
 1. **Login to get JWT token**
 
    ```http
-   POST http://localhost:8000/api/auth/login
+   POST http://localhost:8000/api/v1/auth/login
    Content-Type: application/json
 
    {
@@ -540,6 +583,7 @@ INSERT INTO chat_sessions (
 4. **Click "Connect"**
 
 **Expected Response:**
+
 ```
 Connected to ws://localhost:8000/chat
 ```
@@ -551,44 +595,52 @@ You should see a `chat_joined` event if you have an active session.
 **Format:** Socket.IO uses array format: `[event_name, data]`
 
 #### Join Chat:
+
 ```json
-["join_chat", {"chatSessionId": "test-chat-123"}]
+["join_chat", { "chatSessionId": "test-chat-123" }]
 ```
 
 #### Send Message:
+
 ```json
-["send_message", {"chatSessionId": "test-chat-123", "content": "Hello!"}]
+["send_message", { "chatSessionId": "test-chat-123", "content": "Hello!" }]
 ```
 
 #### Start Typing:
+
 ```json
-["typing", {"chatSessionId": "test-chat-123", "isTyping": true}]
+["typing", { "chatSessionId": "test-chat-123", "isTyping": true }]
 ```
 
 #### Stop Typing:
+
 ```json
-["typing", {"chatSessionId": "test-chat-123", "isTyping": false}]
+["typing", { "chatSessionId": "test-chat-123", "isTyping": false }]
 ```
 
 #### End Chat:
+
 ```json
-["end_chat", {"chatSessionId": "test-chat-123"}]
+["end_chat", { "chatSessionId": "test-chat-123" }]
 ```
 
 ### Step 5: Testing with Two Users
 
 **User 1 Window:**
+
 1. Connect with User 1's JWT token
 2. Join chat: `["join_chat", {"chatSessionId": "test-chat-123"}]`
 3. Send message: `["send_message", {"chatSessionId": "test-chat-123", "content": "Hi from User 1"}]`
 
 **User 2 Window:**
+
 1. Open new WebSocket tab
 2. Connect with User 2's JWT token
 3. Join same chat: `["join_chat", {"chatSessionId": "test-chat-123"}]`
 4. You should receive User 1's message
 
 **Test Real-time Features:**
+
 - User 1 types → User 2 sees typing indicator
 - User 2 sends message → User 1 receives it instantly
 - User 1 ends chat → Both receive `chat_ended` event
@@ -600,40 +652,49 @@ You should see a `chat_joined` event if you have an active session.
 ### Connection Errors
 
 **Error: `Could not connect to ws://localhost:8000/chat`**
+
 - **Cause:** Server not running or wrong port
 - **Solution:** Check server is running on port 8000
 
 **Error: `Authentication token required`**
+
 - **Cause:** No JWT token provided
 - **Solution:** Add token to Authorization header
 
 **Error: `Invalid or expired token`**
+
 - **Cause:** Token is invalid or expired
 - **Solution:** Login again to get fresh token
 
 **Error: `Too many connection attempts`**
+
 - **Cause:** Rate limit exceeded (5 connections/minute)
 - **Solution:** Wait 60 seconds before retrying
 
 ### Event Errors
 
 **Error: `You are not a participant in this chat`**
+
 - **Cause:** User is not part of this chat session
 - **Solution:** Verify the chatSessionId and user association
 
 **Error: `Chat session not found`**
+
 - **Cause:** Chat session doesn't exist in database
 - **Solution:** Create chat session or check ID
 
 **Error: `Chat session has expired`**
+
 - **Cause:** Chat's `expiresAt` time has passed
 - **Solution:** Create new chat session
 
 **Error: `Chat session has already ended`**
+
 - **Cause:** Chat status is `ENDED`
 - **Solution:** Create new chat session
 
 **Error: `Rate limit exceeded. Slow down!`**
+
 - **Cause:** Exceeded 60 events per minute
 - **Solution:** Reduce message frequency
 
@@ -644,6 +705,7 @@ You should see a `chat_joined` event if you have an active session.
 The chat gateway implements two types of rate limiting:
 
 ### 1. Connection Rate Limit
+
 - **Limit:** 5 connections per minute per user/IP
 - **Window:** 60 seconds
 - **Scope:** Per IP address (before auth) or per userId (after auth)
@@ -651,6 +713,7 @@ The chat gateway implements two types of rate limiting:
 **Implementation:** `src/common/middleware/websocket-rate-limit.middleware.ts:29`
 
 ### 2. Event Rate Limit
+
 - **Limit:** 60 events per minute per user
 - **Window:** 60 seconds
 - **Scope:** Per authenticated userId
@@ -664,7 +727,7 @@ The chat gateway implements two types of rate limiting:
 const allowed = await this.wsRateLimitMiddleware.checkEventRateLimit(userId);
 if (!allowed) {
   client.emit(CHAT_EVENTS.ERROR, {
-    message: 'Rate limit exceeded. Slow down!'
+    message: 'Rate limit exceeded. Slow down!',
   });
   return;
 }
@@ -679,21 +742,25 @@ The chat module uses Redis for performance optimization:
 ### Cached Data
 
 **1. Chat Sessions**
+
 - **Key:** `chat:session:{chatSessionId}`
 - **TTL:** 2 hours
 - **Data:** User IDs, venue ID, timestamps
 
 **2. Messages**
+
 - **Key:** `chat:messages:{chatSessionId}`
 - **TTL:** 2 hours
 - **Data:** Last 50 messages (Redis LIST)
 
 **3. Socket Mappings**
+
 - **Key:** `socket:user:{userId}`
 - **TTL:** 1 hour
 - **Data:** Socket ID for direct messaging
 
 **4. User Active Chat**
+
 - **Key:** `chat:user:{userId}`
 - **TTL:** 2 hours
 - **Data:** Current active chat session ID
@@ -701,6 +768,7 @@ The chat module uses Redis for performance optimization:
 ### Cache Operations
 
 **Message Caching** (`src/modules/redis/redis.service.ts:302`)
+
 ```typescript
 await this.redis.cacheMessage(chatSessionId, {
   id: message.id,
@@ -711,6 +779,7 @@ await this.redis.cacheMessage(chatSessionId, {
 ```
 
 **Retrieving Cached Messages** (`src/modules/redis/redis.service.ts:326`)
+
 ```typescript
 const messages = await this.redis.getCachedMessages(chatSessionId, 50);
 ```
@@ -769,6 +838,7 @@ The chat module runs periodic background jobs:
 **Purpose:** Warn users when their chat is about to expire
 
 **Logic:**
+
 - Finds chats expiring in next 5 minutes
 - Emits `session_ending_soon` event to chat room
 - Includes minutes remaining
@@ -796,6 +866,7 @@ for (const chat of expiringChats) {
 **Purpose:** Automatically end expired chats
 
 **Logic:**
+
 - Finds ACTIVE chats with `expiresAt < NOW()`
 - Updates status to `EXPIRED`
 - Cleans up Redis cache
@@ -876,6 +947,7 @@ export const CHAT_MESSAGES = {
 ### Problem: Cannot connect to WebSocket
 
 **Check:**
+
 1. Server is running: `npm run start:dev`
 2. Redis is running: `redis-cli ping` (should return PONG)
 3. Port is correct (8000)
@@ -885,6 +957,7 @@ export const CHAT_MESSAGES = {
 ### Problem: Connected but no response to events
 
 **Check:**
+
 1. JWT token in Authorization header
 2. Chat session exists in database with status `ACTIVE`
 3. User is participant in the chat (user1Id or user2Id)
@@ -893,6 +966,7 @@ export const CHAT_MESSAGES = {
 ### Problem: Rate limit errors
 
 **Solution:**
+
 - Wait 60 seconds
 - Reduce message frequency
 - Check if multiple clients using same token
@@ -900,6 +974,7 @@ export const CHAT_MESSAGES = {
 ### Problem: Messages not received by partner
 
 **Check:**
+
 1. Both users connected to same `chatSessionId`
 2. Both users joined the chat room with `join_chat` event
 3. Chat status is `ACTIVE`
@@ -912,6 +987,7 @@ export const CHAT_MESSAGES = {
 ### Security
 
 1. **Use HTTPS/WSS** in production
+
    ```typescript
    @WebSocketGateway({
      namespace: 'chat',
@@ -923,6 +999,7 @@ export const CHAT_MESSAGES = {
    ```
 
 2. **Secure Redis** with password
+
    ```env
    REDIS_PASSWORD=your-secure-password
    ```
@@ -934,6 +1011,7 @@ export const CHAT_MESSAGES = {
 ### Scalability
 
 1. **Redis Adapter** for horizontal scaling
+
    ```typescript
    import { RedisIoAdapter } from '@/adapters/redis-io.adapter';
    app.useWebSocketAdapter(new RedisIoAdapter(app));
@@ -957,25 +1035,30 @@ export const CHAT_MESSAGES = {
 ### ChatService Methods
 
 **`getChatSession(chatSessionId, userId)`**
+
 - Get chat session details with participants
 - Validates user is participant
 - Returns session with user and venue details
 
 **`validateParticipant(chatSessionId, userId)`**
+
 - Checks if user is part of chat
 - Throws ForbiddenException if not
 
 **`sendMessage(data)`**
+
 - Creates message in database
 - Caches in Redis
 - Returns created message
 
 **`getMessages(chatSessionId, userId, options)`**
+
 - Retrieves message history
 - Supports pagination
 - Returns from cache first, then database
 
 **`endChat(chatSessionId, userId)`**
+
 - Ends chat session
 - Updates status to ENDED
 - Cleans up Redis cache

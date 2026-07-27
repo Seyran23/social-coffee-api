@@ -13,7 +13,7 @@ The `/presence` namespace keeps track of who is physically at a venue right now.
 5. [Events — Server → Client](#events--server--client)
 6. [Connection lifecycle](#connection-lifecycle)
 7. [Reconnection and grace period](#reconnection-and-grace-period)
-8. [Heartbeat and geofence](#heartbeat-and-geofence)
+8. [Heartbeat](#heartbeat)
 9. [Rate limits](#rate-limits)
 10. [Error reference](#error-reference)
 11. [TypeScript types](#typescript-types)
@@ -84,22 +84,13 @@ The handshake auth object is the most reliable across environments. Query parame
 
 ### `heartbeat`
 
-Keep the user's Redis presence entry alive and optionally re-validate the geofence.
+Keep the user's Redis presence entry alive. Takes no payload.
 
-**Payload:** _(all fields optional)_
-
-```typescript
-{
-  latitude?: number;   // current device latitude
-  longitude?: number;  // current device longitude
-}
-```
-
-**Recommended cadence:** every 30 seconds. Send coordinates every 60–120 seconds to save battery; heartbeats without coordinates still refresh the session and are very cheap.
+**Recommended cadence:** every 30 seconds.
 
 **Server replies with:** [`heartbeat_ack`](#heartbeat_ack)
 
-If coordinates are provided and the user has moved outside the venue's geofence radius, the server emits [`error`](#error) with message `"You have left the venue. You have been checked out."` and disconnects the socket.
+There is no ongoing geofence re-validation — being inside the venue's geofence is only checked once, at check-in (`POST /venues/:id/checkin`). Once checked in, a user stays checked in until they explicitly check out, check into a different venue, or their presence goes stale (no heartbeat for 90s+), at which point `VenueCleanupService` reaps them.
 
 ---
 
@@ -111,49 +102,50 @@ Sent **automatically on connection** — no need to request it.
 
 ```typescript
 {
-  users: UserProfile[];  // users at the same venue filtered by your preferences
-  timestamp: number;     // Date.now()
+  users: FeedProfile[];      // users at the same venue filtered by your preferences
+  total: number;             // total matches (before pagination)
+  nextCursor: string | null; // cursor for the next page, or null
+  hasMore: boolean;          // whether more pages exist
+  timestamp: number;         // Date.now()
 }
 ```
 
-`UserProfile` shape:
+> **`users` is a flat array** — iterate it directly (`users.map(...)`). The pagination metadata (`total`, `nextCursor`, `hasMore`) sits alongside it at the top level, not wrapped around it.
+
+`FeedProfile` shape:
 
 ```typescript
-interface UserProfile {
+interface FeedProfile {
   id: string;
   firstName: string;
   lastName: string;
-  age: number;
+  birthDate: string; // ISO date — compute age on the client
   gender: 'MALE' | 'FEMALE' | 'OTHER';
-  bio: string;
+  bio: string | null;
   profileImageUrl: string | null;
   interests: Array<{ id: string; name: string }>;
-  lookingFor: LookingFor[];
-  preference: {
-    minAge: number;
-    maxAge: number;
-    preferredGender: 'MALE' | 'FEMALE' | 'OTHER';
-    lookingFor: LookingFor[];
-  } | null;
+  lookingFor: LookingFor[] | null; // what they're looking for (from their preference)
 }
 ```
 
-The feed only includes users who match your preference criteria (age range, preferred gender). It excludes users you have already liked.
+Note: profiles here carry **no `preference` object** — a user's own match preferences are private and never sent to other users. Age is not pre-computed; derive it from `birthDate`.
+
+The feed only includes users who match **your** preference criteria (age range, preferred gender). It excludes users you have already liked.
 
 ---
 
 ### `user_joined`
 
-Broadcast to the venue room when **another** user connects (you do not receive this for your own connection).
+Pushed **only to you** when another user becomes present at your venue **and that user matches your discovery preferences** (same age/gender filtering as the initial feed) — so you won't receive joins for people who wouldn't appear in your feed anyway.
 
 ```typescript
 {
-  user: UserProfile; // the user who just joined
+  user: FeedProfile; // the user who just joined — same shape as feed_initial items
   timestamp: number;
 }
 ```
 
-Use this to append the new profile to your feed UI without a full refresh.
+Use this to append the new profile to your feed UI without a full refresh. Because it's the same `FeedProfile` shape as `feed_initial.users`, you can render both through one card component.
 
 ---
 
@@ -259,29 +251,15 @@ socket.on('connect_error', async err => {
 
 ---
 
-## Heartbeat and geofence
+## Heartbeat
 
-The heartbeat serves two purposes:
-
-1. **Session keepalive** — Redis presence keys have a TTL. Sending a heartbeat resets the TTL and keeps the user "active".
-2. **Geofence re-validation** — If you include coordinates, the server measures the distance to the venue center. If the user is outside `venue.geofenceMeters` (default 150 m), they are automatically checked out and disconnected.
+The heartbeat is session keepalive only — Redis presence keys have a TTL, and sending a heartbeat resets it and keeps the user "active". Geofence distance is only checked once, at check-in (`POST /venues/:id/checkin`); there's no ongoing location re-validation, so staying checked in doesn't require sending coordinates at all.
 
 **Recommended pattern:**
 
 ```typescript
-// Heartbeat every 30 seconds, coordinates every 2 minutes
-let heartbeatCount = 0;
-
 setInterval(() => {
-  heartbeatCount++;
-
-  const includeCoords = heartbeatCount % 4 === 0; // every 4th tick = 2 min
-  const payload =
-    includeCoords && coords
-      ? { latitude: coords.lat, longitude: coords.lon }
-      : {};
-
-  socket.emit('heartbeat', payload);
+  socket.emit('heartbeat');
 }, 30_000);
 ```
 
@@ -306,15 +284,14 @@ The heartbeat counts toward the event rate limit. At one heartbeat per 30 second
 
 ## Error reference
 
-| Message                                                           | When it happens                    | What to do                                        |
-| ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------- |
-| `"Authentication token required"`                                 | No token in handshake              | Add token to auth object                          |
-| `"Invalid or expired token"`                                      | Bad or expired JWT                 | Refresh access token and reconnect                |
-| `"Not checked in. Please check in first."`                        | No check-in in Redis               | Call `POST /api/v1/venues/:id/checkin` first      |
-| `"You have left the venue. You have been checked out."`           | Geofence violation on heartbeat    | User physically left the venue — show checkout UI |
-| `"Too many connection attempts. Please try again in 60 seconds."` | Connection rate limit              | Wait 60 seconds                                   |
-| `"Rate limit exceeded. Please slow down!"`                        | Event rate limit                   | Reduce heartbeat / event frequency                |
-| `"Failed to load initial feed"`                                   | Internal server error on feed load | Retry connection                                  |
+| Message                                                           | When it happens                    | What to do                                   |
+| ----------------------------------------------------------------- | ---------------------------------- | -------------------------------------------- |
+| `"Authentication token required"`                                 | No token in handshake              | Add token to auth object                     |
+| `"Invalid or expired token"`                                      | Bad or expired JWT                 | Refresh access token and reconnect           |
+| `"Not checked in. Please check in first."`                        | No check-in in Redis               | Call `POST /api/v1/venues/:id/checkin` first |
+| `"Too many connection attempts. Please try again in 60 seconds."` | Connection rate limit              | Wait 60 seconds                              |
+| `"Rate limit exceeded. Please slow down!"`                        | Event rate limit                   | Reduce heartbeat / event frequency           |
+| `"Failed to load initial feed"`                                   | Internal server error on feed load | Retry connection                             |
 
 ---
 
@@ -336,32 +313,31 @@ export type LookingFor =
   | 'COFFEE_CHAT'
   | 'EVENTS_COMPANION';
 
-export interface UserProfile {
+// Shape delivered by feed_initial + user_joined. No `preference` (private to
+// each user) and no pre-computed `age` — derive age from `birthDate`.
+export interface FeedProfile {
   id: string;
   firstName: string;
   lastName: string;
-  age: number;
+  birthDate: string; // ISO date
   gender: Gender;
-  bio: string;
+  bio: string | null;
   profileImageUrl: string | null;
   interests: Array<{ id: string; name: string }>;
-  lookingFor: LookingFor[];
-  preference: {
-    minAge: number;
-    maxAge: number;
-    preferredGender: Gender;
-    lookingFor: LookingFor[];
-  } | null;
+  lookingFor: LookingFor[] | null;
 }
 
 // Events: Server → Client
 export interface FeedInitialPayload {
-  users: UserProfile[];
+  users: FeedProfile[];
+  total: number;
+  nextCursor: string | null;
+  hasMore: boolean;
   timestamp: number;
 }
 
 export interface UserJoinedPayload {
-  user: UserProfile;
+  user: FeedProfile;
   timestamp: number;
 }
 
@@ -376,12 +352,6 @@ export interface HeartbeatAckPayload {
 
 export interface PresenceErrorPayload {
   message: string;
-}
-
-// Events: Client → Server
-export interface HeartbeatPayload {
-  latitude?: number;
-  longitude?: number;
 }
 ```
 
@@ -398,13 +368,13 @@ import type {
   FeedInitialPayload,
   UserJoinedPayload,
   UserLeftPayload,
-  UserProfile,
+  FeedProfile,
 } from './presence.types';
 
 const PRESENCE_URL = 'http://localhost:8000/presence';
 
 export function usePresence(accessToken: string | null) {
-  const [feed, setFeed] = useState<UserProfile[]>([]);
+  const [feed, setFeed] = useState<FeedProfile[]>([]);
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -427,11 +397,8 @@ export function usePresence(accessToken: string | null) {
       setConnected(true);
 
       // Start heartbeat
-      let tick = 0;
       heartbeatRef.current = setInterval(() => {
-        tick++;
-        // Send coordinates every 4th tick (2 min) — adjust to your needs
-        socket.emit('heartbeat', {});
+        socket.emit('heartbeat');
       }, 30_000);
     });
 

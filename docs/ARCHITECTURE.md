@@ -175,7 +175,7 @@ sequenceDiagram
 
     Note over App,API: Token expired...
 
-    App->>API: POST /auth/refresh-token\n(cookie sent automatically)
+    App->>API: POST /auth/refresh\n(cookie sent automatically)
     API->>DB: Find & validate refresh token
     API->>DB: Delete old refresh token
     API->>DB: Save new refresh token
