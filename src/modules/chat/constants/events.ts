@@ -11,6 +11,7 @@ export const CHAT_EVENTS = {
   PARTNER_TYPING: 'partner_typing',
   CHAT_ENDED: 'chat_ended',
   CHAT_JOINED: 'chat_joined',
+  COUNTDOWN_STARTED: 'countdown_started',
   SESSION_ENDING_SOON: 'session_ending_soon',
   SESSION_EXPIRED: 'session_expired',
   PARTNER_LEFT: 'partner_left',

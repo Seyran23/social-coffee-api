@@ -29,21 +29,25 @@ export class ChatSessionResponseDto {
   @ApiProperty({
     description: 'Chat status',
     example: 'ACTIVE',
-    enum: ['ACTIVE', 'ENDED', 'EXPIRED'],
+    enum: ['PENDING', 'ACTIVE', 'ENDED', 'EXPIRED'],
   })
   status: string;
 
   @ApiProperty({
-    description: 'When chat started',
+    description:
+      'When the chat started (first message). Null while PENDING — countdown not yet started.',
     example: '2025-11-06T20:00:00.000Z',
+    nullable: true,
   })
-  startedAt: Date;
+  startedAt: Date | null;
 
   @ApiProperty({
-    description: 'When chat expires',
+    description:
+      'When the chat expires. Null while PENDING — countdown not yet started.',
     example: '2025-11-06T20:30:00.000Z',
+    nullable: true,
   })
-  expiresAt: Date;
+  expiresAt: Date | null;
 
   @ApiProperty({
     description: 'Chat partner',

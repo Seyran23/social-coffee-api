@@ -8,7 +8,6 @@ import { ChatSessionStatus, InteractionType } from '@prisma/client';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
-import { CHAT_SESSION_DURATION_MS } from '@/modules/interaction/constants/chat-duration';
 import { InteractionResponseDto } from '@/modules/interaction/dto/response/interaction-response.dto';
 import { MatchResultResponseDto } from '@/modules/interaction/dto/response/match-result-response.dto';
 import { RedisService } from '@/modules/redis/redis.service';
@@ -59,12 +58,10 @@ export class InteractionService {
       throw new ConflictException(INTERACTION_MESSAGES.ALREADY_LIKED);
     }
 
-    const [actorActiveChat, targetActiveChat] = await Promise.all([
-      this.redis.getUserActiveChatSession(actorUserId),
-      this.redis.getUserActiveChatSession(targetUserId),
-    ]);
+    const targetActiveChat =
+      await this.redis.getUserActiveChatSession(targetUserId);
 
-    if (actorActiveChat || targetActiveChat) {
+    if (targetActiveChat) {
       throw new BadRequestException(INTERACTION_MESSAGES.ALREADY_IN_CHAT);
     }
 
@@ -203,17 +200,14 @@ export class InteractionService {
     user2Id: string,
     venueId: string,
   ): Promise<MatchResultResponseDto> {
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + CHAT_SESSION_DURATION_MS);
-
     const chatSession = await this.database.chatSession.create({
       data: {
         venueId,
         user1Id,
         user2Id,
-        status: ChatSessionStatus.ACTIVE,
-        startedAt: now,
-        expiresAt,
+        status: ChatSessionStatus.PENDING,
+        startedAt: null,
+        expiresAt: null,
       },
       include: {
         user1: {
@@ -233,9 +227,9 @@ export class InteractionService {
       user1Id,
       user2Id,
       venueId,
-      status: ChatSessionStatus.ACTIVE,
-      startedAt: now.getTime(),
-      expiresAt: expiresAt.getTime(),
+      status: ChatSessionStatus.PENDING,
+      startedAt: null,
+      expiresAt: null,
       user1: chatSession.user1!,
       user2: chatSession.user2!,
       venue: chatSession.venue,
@@ -263,7 +257,7 @@ export class InteractionService {
       chatSessionId: chatSession.id,
       venueId,
       venueName: chatSession.venue.name,
-      expiresAt,
+      expiresAt: null,
       user1: chatSession.user1!,
       user2: chatSession.user2!,
     });
@@ -276,7 +270,7 @@ export class InteractionService {
       matched: true,
       chatSession: {
         id: chatSession.id,
-        expiresAt,
+        expiresAt: null,
         partner: chatSession.user2!,
       },
     };

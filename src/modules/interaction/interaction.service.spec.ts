@@ -270,12 +270,12 @@ describe('InteractionService', () => {
       );
     });
 
-    it('should throw BadRequestException if actor already has an active chat session', async () => {
+    it('should throw BadRequestException if target already has an active chat session', async () => {
       vi.spyOn(redisService, 'isUserAtVenue').mockResolvedValue(true);
       vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(null);
-      vi.spyOn(redisService, 'getUserActiveChatSession')
-        .mockResolvedValueOnce('existing-chat-session')
-        .mockResolvedValueOnce(null);
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        'another-chat-session',
+      );
 
       await expect(
         interactionService.likeUser(actorId, targetId, venueId),
@@ -284,18 +284,28 @@ describe('InteractionService', () => {
       );
     });
 
-    it('should throw BadRequestException if target already has an active chat session', async () => {
+    it('should allow liking someone even if the actor already has an active chat session', async () => {
       vi.spyOn(redisService, 'isUserAtVenue').mockResolvedValue(true);
-      vi.spyOn(prismaService.interaction, 'findUnique').mockResolvedValue(null);
-      vi.spyOn(redisService, 'getUserActiveChatSession')
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce('another-chat-session');
-
-      await expect(
-        interactionService.likeUser(actorId, targetId, venueId),
-      ).rejects.toThrow(
-        new BadRequestException(INTERACTION_MESSAGES.ALREADY_IN_CHAT),
+      vi.spyOn(redisService, 'getUserActiveChatSession').mockResolvedValue(
+        null,
       );
+      vi.spyOn(prismaService.interaction, 'findUnique')
+        .mockResolvedValueOnce(null) // no existing like from actor -> target
+        .mockResolvedValueOnce(null); // no mutual like yet
+
+      const result = await interactionService.likeUser(
+        actorId,
+        targetId,
+        venueId,
+      );
+
+      expect(redisService.getUserActiveChatSession).toHaveBeenCalledWith(
+        targetId,
+      );
+      expect(redisService.getUserActiveChatSession).not.toHaveBeenCalledWith(
+        actorId,
+      );
+      expect(result).toEqual({ matched: false });
     });
   });
 

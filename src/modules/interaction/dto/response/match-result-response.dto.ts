@@ -19,10 +19,12 @@ class MatchChatSessionDto {
   id: string;
 
   @ApiProperty({
-    description: 'When the chat expires',
+    description:
+      'When the chat expires. Null until the first message starts the 10-minute countdown.',
     example: '2025-11-06T20:10:00.000Z',
+    nullable: true,
   })
-  expiresAt: Date;
+  expiresAt: Date | null;
 
   @ApiProperty({
     description: 'Chat partner info',
