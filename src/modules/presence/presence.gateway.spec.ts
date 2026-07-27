@@ -12,7 +12,6 @@ import { RedisService } from '@/modules/redis/redis.service';
 describe('PresenceGateway', () => {
   let presenceGateway: PresenceGateway;
   let presenceService: PresenceService;
-  let redisService: RedisService;
 
   let mockClient: AuthenticatedSocket;
   let mockServer: any;
@@ -69,7 +68,6 @@ describe('PresenceGateway', () => {
 
     presenceGateway = module.get<PresenceGateway>(PresenceGateway);
     presenceService = module.get<PresenceService>(PresenceService);
-    redisService = module.get<RedisService>(RedisService);
 
     // Mock Socket.io Server and Client
     mockServer = {
@@ -130,19 +128,7 @@ describe('PresenceGateway', () => {
   describe('handleHeartbeat', () => {
     it('should delegate heartbeat to presenceService', async () => {
       await presenceGateway.handleHeartbeat(mockClient);
-      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(
-        mockClient,
-        undefined,
-      );
-    });
-
-    it('should forward optional coordinate payload', async () => {
-      const payload = { latitude: 41.0, longitude: 28.0 };
-      await presenceGateway.handleHeartbeat(mockClient, payload);
-      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(
-        mockClient,
-        payload,
-      );
+      expect(presenceService.handleHeartbeat).toHaveBeenCalledWith(mockClient);
     });
   });
 
@@ -167,56 +153,41 @@ describe('PresenceGateway', () => {
   });
 
   describe('notifyMatch', () => {
-    it('should emit match_found to both connected users', async () => {
-      const mockUser1Socket = { emit: vi.fn() };
-      const mockUser2Socket = { emit: vi.fn() };
-
-      vi.spyOn(redisService, 'getUserSocket')
-        .mockResolvedValueOnce('socket-1')
-        .mockResolvedValueOnce('socket-2');
-
-      mockServer.sockets.sockets.set('socket-1', mockUser1Socket);
-      mockServer.sockets.sockets.set('socket-2', mockUser2Socket);
+    it('emits match_found to both users’ personal rooms on the presence feed', () => {
+      // `server.to(room)` returns an emitter; capture per-room emits.
+      const emits: { room: string; event: string; payload: any }[] = [];
+      mockServer.to = vi.fn((room: string) => ({
+        emit: (event: string, payload: any) =>
+          emits.push({ room, event, payload }),
+      }));
 
       const matchData = {
         chatSessionId: 'chat-1',
         venueId: 'v-1',
         venueName: 'Cool Place',
-        expiresAt: new Date(),
+        expiresAt: null,
         user1: { id: 'user-1', firstName: 'John', lastName: 'Doe' },
         user2: { id: 'user-2', firstName: 'Jane', lastName: 'Smith' },
       };
 
-      await presenceGateway.notifyMatch('user-1', 'user-2', matchData);
+      presenceGateway.notifyMatch('user-1', 'user-2', matchData);
 
-      expect(mockUser1Socket.emit).toHaveBeenCalledWith(
-        'match_found',
-        expect.objectContaining({
-          chatSessionId: 'chat-1',
-          partner: matchData.user2,
-        }),
-      );
+      const toUser1 = emits.find(e => e.room === 'user:user-1');
+      const toUser2 = emits.find(e => e.room === 'user:user-2');
 
-      expect(mockUser2Socket.emit).toHaveBeenCalledWith(
-        'match_found',
-        expect.objectContaining({
-          chatSessionId: 'chat-1',
-          partner: matchData.user1,
-        }),
-      );
-    });
+      expect(toUser1?.event).toBe('match_found');
+      expect(toUser1?.payload).toMatchObject({
+        chatSessionId: 'chat-1',
+        message: 'You have a match!',
+        partner: matchData.user2,
+      });
 
-    it('should delete orphaned socket from redis if not found in server', async () => {
-      // Redis says socket-1 exists
-      vi.spyOn(redisService, 'getUserSocket').mockResolvedValue('socket-1');
-
-      // But server map is empty!
-      expect(mockServer.sockets.sockets.has('socket-1')).toBe(false);
-
-      await presenceGateway.notifyMatch('user-1', 'user-2', {} as any);
-
-      // It should clean up the orphan socket record
-      expect(redisService.deleteUserSocket).toHaveBeenCalledWith('user-1');
+      expect(toUser2?.event).toBe('match_found');
+      expect(toUser2?.payload).toMatchObject({
+        chatSessionId: 'chat-1',
+        message: 'You have a match!',
+        partner: matchData.user1,
+      });
     });
   });
 });

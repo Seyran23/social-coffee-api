@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
   ConnectedSocket,
-  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   SubscribeMessage,
@@ -14,9 +13,7 @@ import { AuthenticatedSocket } from '@/common/interfaces/websocket/authenticated
 import { LoggerService } from '@/common/logger/logger.service';
 import { WsAuthMiddleware } from '@/common/middleware/websocket-auth.middleware';
 import { WsRateLimitMiddleware } from '@/common/middleware/websocket-rate-limit.middleware';
-import { HeartbeatDto } from '@/modules/presence/dto/request/heartbeat.dto';
 import { PresenceService } from '@/modules/presence/presence.service';
-import { RedisService } from '@/modules/redis/redis.service';
 
 @WebSocketGateway({
   namespace: '/presence',
@@ -39,7 +36,6 @@ export class PresenceGateway
     private readonly wsAuthMiddleware: WsAuthMiddleware,
     private readonly wsRateLimitMiddleware: WsRateLimitMiddleware,
     private readonly logger: LoggerService,
-    private readonly redis: RedisService,
   ) {
     this.logger.setContext(PresenceGateway.name);
   }
@@ -76,12 +72,9 @@ export class PresenceGateway
   }
 
   @SubscribeMessage('heartbeat')
-  async handleHeartbeat(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload?: HeartbeatDto,
-  ) {
+  async handleHeartbeat(@ConnectedSocket() client: Socket) {
     const socket = client as AuthenticatedSocket;
-    await this.presenceService.handleHeartbeat(socket, payload);
+    await this.presenceService.handleHeartbeat(socket);
   }
 
   async broadcastUserJoined(userId: string, venueId: string): Promise<void> {
@@ -96,68 +89,36 @@ export class PresenceGateway
     await this.presenceService.broadcastUserLeft(userId, venueId, this.server);
   }
 
-  // In PresenceGateway
-  async notifyMatch(
+  notifyMatch(
     user1Id: string,
     user2Id: string,
     matchData: {
       chatSessionId: string;
       venueId: string;
       venueName: string;
-      expiresAt: Date;
+      expiresAt: Date | null;
       user1: { id: string; firstName: string; lastName: string };
       user2: { id: string; firstName: string; lastName: string };
     },
-  ): Promise<void> {
-    const [user1Socket, user2Socket] = await Promise.all([
-      this.getUserSocket(user1Id),
-      this.getUserSocket(user2Id),
-    ]);
-
+  ): void {
     const basePayload = {
       chatSessionId: matchData.chatSessionId,
       venueId: matchData.venueId,
       venueName: matchData.venueName,
       expiresAt: matchData.expiresAt,
+      message: 'You have a match!',
       timestamp: Date.now(),
     };
 
-    if (user1Socket) {
-      user1Socket.emit('match_found', {
-        // Use 'match.found' to match client
-        ...basePayload,
-        partner: matchData.user2,
-      });
-      this.logger.log(`Match notification sent to user ${user1Id}`);
-    }
+    this.server.to(`user:${user1Id}`).emit('match_found', {
+      ...basePayload,
+      partner: matchData.user2,
+    });
+    this.server.to(`user:${user2Id}`).emit('match_found', {
+      ...basePayload,
+      partner: matchData.user1,
+    });
 
-    if (user2Socket) {
-      user2Socket.emit('match_found', {
-        // Use 'match.found' to match client
-        ...basePayload,
-        partner: matchData.user1,
-      });
-      this.logger.log(`Match notification sent to user ${user2Id}`);
-    }
-  }
-
-  private async getUserSocket(
-    userId: string,
-  ): Promise<AuthenticatedSocket | null> {
-    const socketId = await this.redis.getUserSocket(userId);
-    if (!socketId) {
-      return null;
-    }
-
-    // Get socket directly by ID
-    const socket = this.server.sockets.sockets.get(socketId);
-
-    if (!socket) {
-      // Socket disconnected, clean up Redis
-      await this.redis.deleteUserSocket(userId);
-      return null;
-    }
-
-    return socket as AuthenticatedSocket;
+    this.logger.log(`Match notification sent to users ${user1Id} & ${user2Id}`);
   }
 }

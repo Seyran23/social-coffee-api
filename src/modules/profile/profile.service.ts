@@ -409,18 +409,55 @@ export class ProfileService {
       preferredGender: Gender | null;
     },
   ): UserProfile[] {
-    return profiles.filter(profile => {
-      if (
-        !isInAgeRange(profile.birthDate, preferences.minAge, preferences.maxAge)
-      ) {
-        return false;
-      }
+    return profiles.filter(profile =>
+      this.matchesPreferences(profile, preferences),
+    );
+  }
 
-      return !(
-        preferences.preferredGender !== null &&
-        profile.gender !== preferences.preferredGender
-      );
-    });
+  private matchesPreferences(
+    profile: UserProfile,
+    preferences: {
+      minAge: number;
+      maxAge: number;
+      preferredGender: Gender | null;
+    },
+  ): boolean {
+    if (
+      !isInAgeRange(profile.birthDate, preferences.minAge, preferences.maxAge)
+    ) {
+      return false;
+    }
+
+    return !(
+      preferences.preferredGender !== null &&
+      profile.gender !== preferences.preferredGender
+    );
+  }
+
+  async getJoinAudience(
+    joinerId: string,
+    venueId: string,
+  ): Promise<{ recipientIds: string[]; profile: ProfileForFeed }> {
+    const joiner = await this.fetchProfile(joinerId);
+    const profile = mapToProfileForFeed(joiner);
+
+    const otherUserIds = await this.getOtherUsersAtVenue(joinerId, venueId);
+    if (otherUserIds.length === 0) {
+      return { recipientIds: [], profile };
+    }
+
+    const viewers = await this.fetchProfiles(otherUserIds);
+
+    const recipientIds = viewers
+      .filter(viewer =>
+        this.matchesPreferences(
+          joiner,
+          viewer.preference ?? DEFAULT_PREFERENCES,
+        ),
+      )
+      .map(viewer => viewer.id);
+
+    return { recipientIds, profile };
   }
 
   private paginateProfiles(

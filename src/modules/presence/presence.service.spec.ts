@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoggerService } from '@/common/logger/logger.service';
-import { PrismaService } from '@/database/prisma.service';
 import { WS_EVENTS } from '@/modules/presence/constants/ws-event-namings';
 import { PresenceService } from '@/modules/presence/presence.service';
 import { ProfileService } from '@/modules/profile/profile.service';
@@ -29,6 +28,7 @@ describe('PresenceService', () => {
           useValue: {
             getUserCurrentVenue: vi.fn(),
             updateHeartbeat: vi.fn(),
+            refreshUserVenuePresence: vi.fn(),
           },
         },
         {
@@ -36,6 +36,7 @@ describe('PresenceService', () => {
           useValue: {
             discoverProfiles: vi.fn(),
             getUserProfile: vi.fn(),
+            getJoinAudience: vi.fn(),
           },
         },
         {
@@ -46,12 +47,6 @@ describe('PresenceService', () => {
             warn: vi.fn(),
             debug: vi.fn(),
             setContext: vi.fn(),
-          },
-        },
-        {
-          provide: PrismaService,
-          useValue: {
-            venue: { findUnique: vi.fn() },
           },
         },
       ],
@@ -102,14 +97,18 @@ describe('PresenceService', () => {
       );
 
       const mockProfiles = [{ id: 'user-2' }];
-      vi.spyOn(profileService, 'discoverProfiles').mockResolvedValue(
-        mockProfiles as any,
-      );
+      vi.spyOn(profileService, 'discoverProfiles').mockResolvedValue({
+        profiles: mockProfiles,
+        total: 1,
+        nextCursor: null,
+        hasMore: false,
+      } as any);
 
       const mockMyProfile = { id: 'user-1', firstName: 'Test' };
-      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(
-        mockMyProfile as any,
-      );
+      vi.spyOn(profileService, 'getJoinAudience').mockResolvedValue({
+        recipientIds: ['user-2'],
+        profile: mockMyProfile as any,
+      });
 
       // Trigger the connection
       await presenceService.handleUserConnection(mockClient);
@@ -117,16 +116,20 @@ describe('PresenceService', () => {
       // Verify Redis and Venue setup
       expect(redisService.updateHeartbeat).toHaveBeenCalledWith('user-1');
       expect(mockClient.join).toHaveBeenCalledWith('venue:venue-1');
+      expect(mockClient.join).toHaveBeenCalledWith('user:user-1');
       expect(mockClient.venue).toEqual({ id: 'venue-1' });
 
-      // Verify Initial Feed
+      // Verify Initial Feed — `users` must be the flat array, not the
+      // paginated wrapper, so the client can iterate it directly.
       expect(mockClient.emit).toHaveBeenCalledWith(WS_EVENTS.FEED_INITIAL, {
         users: mockProfiles,
+        total: 1,
+        nextCursor: null,
+        hasMore: false,
         timestamp: expect.any(Number),
       });
 
-      // Verify Broadcast Join (socket.to(...) so sender doesn't receive his own join event)
-      expect(mockClient.to).toHaveBeenCalledWith('venue:venue-1');
+      expect(mockClient.to).toHaveBeenCalledWith('user:user-2');
       expect(mockClient.emit).toHaveBeenCalledWith(WS_EVENTS.USER_JOINED, {
         user: mockMyProfile,
         timestamp: expect.any(Number),
@@ -176,6 +179,9 @@ describe('PresenceService', () => {
       await presenceService.handleHeartbeat(mockClient);
 
       expect(redisService.updateHeartbeat).toHaveBeenCalledWith('user-1');
+      expect(redisService.refreshUserVenuePresence).toHaveBeenCalledWith(
+        'user-1',
+      );
       expect(mockClient.emit).toHaveBeenCalledWith(WS_EVENTS.HEARTBEAT_ACK, {
         timestamp: expect.any(Number),
       });
@@ -183,11 +189,12 @@ describe('PresenceService', () => {
   });
 
   describe('broadcastUserJoined', () => {
-    it('should broadcast to server room', async () => {
+    it('should broadcast to preference-matched recipient rooms via server', async () => {
       const mockProfile = { id: 'user-1', firstName: 'John' };
-      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(
-        mockProfile as any,
-      );
+      vi.spyOn(profileService, 'getJoinAudience').mockResolvedValue({
+        recipientIds: ['user-2'],
+        profile: mockProfile as any,
+      });
 
       await presenceService.broadcastUserJoined(
         'user-1',
@@ -195,7 +202,7 @@ describe('PresenceService', () => {
         mockServer,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('venue:venue-1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:user-2');
       expect(mockServer.emit).toHaveBeenCalledWith(WS_EVENTS.USER_JOINED, {
         user: mockProfile,
         timestamp: expect.any(Number),
@@ -231,202 +238,6 @@ describe('PresenceService', () => {
       presenceService.handleUserDisconnection(mockClient, mockServer);
 
       expect(setTimeout).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleHeartbeat — with coordinates', () => {
-    it('should call checkGeofenceOrCheckOut when coordinates are provided and user is inside boundary', async () => {
-      mockClient.venue = { id: 'venue-1' };
-
-      // Access private database via the module — re-build a fresh module here
-      // so we can control the database mock independently.
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          PresenceService,
-          {
-            provide: RedisService,
-            useValue: {
-              getUserCurrentVenue: vi.fn(),
-              updateHeartbeat: vi.fn(),
-              removeUserFromVenue: vi.fn(),
-            },
-          },
-          {
-            provide: ProfileService,
-            useValue: { discoverProfiles: vi.fn(), getUserProfile: vi.fn() },
-          },
-          {
-            provide: LoggerService,
-            useValue: {
-              log: vi.fn(),
-              error: vi.fn(),
-              warn: vi.fn(),
-              debug: vi.fn(),
-              setContext: vi.fn(),
-            },
-          },
-          {
-            provide: PrismaService,
-            useValue: {
-              venue: {
-                findUnique: vi.fn().mockResolvedValue({
-                  latitude: 48.8566,
-                  longitude: 2.3522,
-                  geofenceMeters: 500,
-                }),
-              },
-            },
-          },
-        ],
-      }).compile();
-
-      const svc = module.get<PresenceService>(PresenceService);
-      const socket: any = {
-        id: 'socket-abc',
-        user: { userId: 'user-1' },
-        venue: { id: 'venue-1' },
-        emit: vi.fn(),
-        disconnect: vi.fn(),
-      };
-
-      // Coordinates very close to the venue — should stay connected
-      await svc.handleHeartbeat(socket, {
-        latitude: 48.8566,
-        longitude: 2.3522,
-      });
-
-      expect(socket.disconnect).not.toHaveBeenCalled();
-      expect(socket.emit).toHaveBeenCalledWith(
-        WS_EVENTS.HEARTBEAT_ACK,
-        expect.any(Object),
-      );
-    });
-
-    it('should disconnect socket when user is outside geofence boundary', async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          PresenceService,
-          {
-            provide: RedisService,
-            useValue: {
-              getUserCurrentVenue: vi.fn(),
-              updateHeartbeat: vi.fn(),
-              removeUserFromVenue: vi.fn(),
-            },
-          },
-          {
-            provide: ProfileService,
-            useValue: { discoverProfiles: vi.fn(), getUserProfile: vi.fn() },
-          },
-          {
-            provide: LoggerService,
-            useValue: {
-              log: vi.fn(),
-              error: vi.fn(),
-              warn: vi.fn(),
-              debug: vi.fn(),
-              setContext: vi.fn(),
-            },
-          },
-          {
-            provide: PrismaService,
-            useValue: {
-              venue: {
-                findUnique: vi.fn().mockResolvedValue({
-                  latitude: 48.8566,
-                  longitude: 2.3522,
-                  geofenceMeters: 10, // very tight fence
-                }),
-              },
-            },
-          },
-        ],
-      }).compile();
-
-      const svc = module.get<PresenceService>(PresenceService);
-      const redis = module.get<RedisService>(RedisService);
-      vi.spyOn(redis, 'removeUserFromVenue').mockResolvedValue(undefined);
-
-      const socket: any = {
-        id: 'socket-abc',
-        user: { userId: 'user-1' },
-        venue: { id: 'venue-1' },
-        emit: vi.fn(),
-        disconnect: vi.fn(),
-      };
-
-      // Coordinates far away
-      await svc.handleHeartbeat(socket, {
-        latitude: 51.5074, // London
-        longitude: -0.1278,
-      });
-
-      expect(socket.emit).toHaveBeenCalledWith(WS_EVENTS.ERROR, {
-        message: 'You have left the venue. You have been checked out.',
-      });
-      expect(socket.disconnect).toHaveBeenCalled();
-    });
-
-    it('should skip geofence check when venue has no coordinates', async () => {
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          PresenceService,
-          {
-            provide: RedisService,
-            useValue: {
-              getUserCurrentVenue: vi.fn(),
-              updateHeartbeat: vi.fn(),
-            },
-          },
-          {
-            provide: ProfileService,
-            useValue: { discoverProfiles: vi.fn(), getUserProfile: vi.fn() },
-          },
-          {
-            provide: LoggerService,
-            useValue: {
-              log: vi.fn(),
-              error: vi.fn(),
-              warn: vi.fn(),
-              debug: vi.fn(),
-              setContext: vi.fn(),
-            },
-          },
-          {
-            provide: PrismaService,
-            useValue: {
-              venue: {
-                // Venue has no lat/lon
-                findUnique: vi.fn().mockResolvedValue({
-                  latitude: null,
-                  longitude: null,
-                  geofenceMeters: null,
-                }),
-              },
-            },
-          },
-        ],
-      }).compile();
-
-      const svc = module.get<PresenceService>(PresenceService);
-      const socket: any = {
-        id: 'socket-abc',
-        user: { userId: 'user-1' },
-        venue: { id: 'venue-1' },
-        emit: vi.fn(),
-        disconnect: vi.fn(),
-      };
-
-      await svc.handleHeartbeat(socket, {
-        latitude: 51.5074,
-        longitude: -0.1278,
-      });
-
-      expect(socket.disconnect).not.toHaveBeenCalled();
-      expect(socket.emit).toHaveBeenCalledWith(
-        WS_EVENTS.HEARTBEAT_ACK,
-        expect.any(Object),
-      );
     });
   });
 
@@ -504,7 +315,7 @@ describe('PresenceService', () => {
 
   describe('sendInitialFeed', () => {
     it('should emit feed_initial on success', async () => {
-      const profiles = {
+      const feed = {
         profiles: [{ id: 'user-2' }],
         total: 1,
         nextCursor: null,
@@ -514,7 +325,7 @@ describe('PresenceService', () => {
         'venue-1',
       );
       vi.spyOn(profileService, 'discoverProfiles').mockResolvedValue(
-        profiles as any,
+        feed as any,
       );
       vi.spyOn(profileService, 'getUserProfile').mockResolvedValue({
         id: 'user-1',
@@ -524,7 +335,7 @@ describe('PresenceService', () => {
 
       expect(mockClient.emit).toHaveBeenCalledWith(
         WS_EVENTS.FEED_INITIAL,
-        expect.objectContaining({ users: profiles }),
+        expect.objectContaining({ users: feed.profiles }),
       );
     });
 
@@ -550,9 +361,10 @@ describe('PresenceService', () => {
   describe('notifyVenueUserJoined — server path', () => {
     it('should use server.to().emit() when only server is provided (broadcastUserJoined)', async () => {
       const mockProfile = { id: 'user-1', firstName: 'Alice' };
-      vi.spyOn(profileService, 'getUserProfile').mockResolvedValue(
-        mockProfile as any,
-      );
+      vi.spyOn(profileService, 'getJoinAudience').mockResolvedValue({
+        recipientIds: ['user-2'],
+        profile: mockProfile as any,
+      });
 
       await presenceService.broadcastUserJoined(
         'user-1',
@@ -560,15 +372,30 @@ describe('PresenceService', () => {
         mockServer,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('venue:venue-1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:user-2');
       expect(mockServer.emit).toHaveBeenCalledWith(
         WS_EVENTS.USER_JOINED,
         expect.objectContaining({ user: mockProfile }),
       );
     });
 
-    it('should not throw when getUserProfile rejects', async () => {
-      vi.spyOn(profileService, 'getUserProfile').mockRejectedValue(
+    it('should emit nothing when no recipient matches the joiner preferences', async () => {
+      vi.spyOn(profileService, 'getJoinAudience').mockResolvedValue({
+        recipientIds: [],
+        profile: { id: 'user-1' } as any,
+      });
+
+      await presenceService.broadcastUserJoined(
+        'user-1',
+        'venue-1',
+        mockServer,
+      );
+
+      expect(mockServer.emit).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when getJoinAudience rejects', async () => {
+      vi.spyOn(profileService, 'getJoinAudience').mockRejectedValue(
         new Error('not found'),
       );
 

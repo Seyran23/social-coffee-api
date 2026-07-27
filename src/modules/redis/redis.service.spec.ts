@@ -202,6 +202,15 @@ describe('RedisService', () => {
       );
     });
 
+    it('should refresh the venue presence TTL on heartbeat', async () => {
+      await redisService.refreshUserVenuePresence('user-1');
+
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        'user:user-1:venue',
+        REDIS_TTL.VENUE_PRESENCE,
+      );
+    });
+
     it('should remove user from venue and clean up active venues if empty', async () => {
       mockRedis.scard.mockResolvedValue(0);
 

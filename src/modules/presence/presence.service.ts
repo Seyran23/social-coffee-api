@@ -3,13 +3,10 @@ import { Server } from 'socket.io';
 
 import { AuthenticatedSocket } from '@/common/interfaces/websocket/authenticated-socket.interface';
 import { LoggerService } from '@/common/logger/logger.service';
-import { PrismaService } from '@/database/prisma.service';
 import { RECONNECTION_GRACE_PERIOD_MS } from '@/modules/presence/constants/reconnection-time';
 import { WS_EVENTS } from '@/modules/presence/constants/ws-event-namings';
-import { HeartbeatDto } from '@/modules/presence/dto/request/heartbeat.dto';
 import { ProfileService } from '@/modules/profile/profile.service';
 import { RedisService } from '@/modules/redis/redis.service';
-import { isWithinDistance } from '@/modules/venue/utils/map-url.util';
 
 @Injectable()
 export class PresenceService implements OnModuleDestroy {
@@ -23,14 +20,11 @@ export class PresenceService implements OnModuleDestroy {
     private readonly redis: RedisService,
     private readonly profileService: ProfileService,
     private readonly logger: LoggerService,
-    private readonly database: PrismaService,
   ) {
     this.logger.setContext(PresenceService.name);
   }
 
   onModuleDestroy(): void {
-    // Clear any in-flight disconnection grace timers so they don't fire
-    // after the module has been torn down (and don't leak in dev hot reloads).
     for (const timer of this.disconnectionTimers.values()) {
       clearTimeout(timer);
     }
@@ -74,10 +68,7 @@ export class PresenceService implements OnModuleDestroy {
     this.startDisconnectionGracePeriod(userId, venueId, server);
   }
 
-  async handleHeartbeat(
-    socket: AuthenticatedSocket,
-    payload?: HeartbeatDto,
-  ): Promise<void> {
+  async handleHeartbeat(socket: AuthenticatedSocket): Promise<void> {
     const userId = socket.user.userId;
     const venueId = socket.venue?.id;
 
@@ -87,58 +78,11 @@ export class PresenceService implements OnModuleDestroy {
     }
 
     await this.redis.updateHeartbeat(userId);
-
-    // If the client included current coordinates, re-validate the geofence.
-    // Frontend can choose how often to send coords (e.g. every 60s) — heartbeats
-    // without coords skip the check, keeping the lookup cost bounded.
-    if (payload?.latitude !== undefined && payload?.longitude !== undefined) {
-      await this.checkGeofenceOrCheckOut(
-        userId,
-        venueId,
-        payload.latitude,
-        payload.longitude,
-        socket,
-      );
-    }
+    await this.redis.refreshUserVenuePresence(userId);
 
     socket.emit(WS_EVENTS.HEARTBEAT_ACK, {
       timestamp: Date.now(),
     });
-  }
-
-  private async checkGeofenceOrCheckOut(
-    userId: string,
-    venueId: string,
-    latitude: number,
-    longitude: number,
-    socket: AuthenticatedSocket,
-  ): Promise<void> {
-    const venue = await this.database.venue.findUnique({
-      where: { id: venueId },
-      select: { latitude: true, longitude: true, geofenceMeters: true },
-    });
-
-    if (!venue?.latitude || !venue?.longitude) {
-      // Venue has no coordinates configured — can't validate.
-      return;
-    }
-
-    const inside = isWithinDistance(
-      { userLat: latitude, userLon: longitude },
-      { venueLat: venue.latitude, venueLon: venue.longitude },
-      venue.geofenceMeters,
-    );
-
-    if (!inside) {
-      this.logger.log(
-        `User ${userId} is outside venue ${venueId} geofence — auto-checking out`,
-      );
-      await this.redis.removeUserFromVenue(userId, venueId);
-      socket.emit(WS_EVENTS.ERROR, {
-        message: 'You have left the venue. You have been checked out.',
-      });
-      socket.disconnect();
-    }
   }
 
   async broadcastUserJoined(
@@ -186,6 +130,7 @@ export class PresenceService implements OnModuleDestroy {
     this.userSocketMap.set(userId, socket.id);
 
     socket.join(`venue:${venueId}`);
+    socket.join(`user:${userId}`);
 
     this.logger.debug(
       `Socket ${socket.id} mapped to user ${userId} in venue ${venueId}`,
@@ -254,11 +199,13 @@ export class PresenceService implements OnModuleDestroy {
     socket: AuthenticatedSocket,
   ): Promise<void> {
     try {
-      const compatibleUsers =
-        await this.profileService.discoverProfiles(userId);
+      const feed = await this.profileService.discoverProfiles(userId);
 
       socket.emit(WS_EVENTS.FEED_INITIAL, {
-        users: compatibleUsers,
+        users: feed.profiles,
+        total: feed.total,
+        nextCursor: feed.nextCursor,
+        hasMore: feed.hasMore,
         timestamp: Date.now(),
       });
 
@@ -281,30 +228,31 @@ export class PresenceService implements OnModuleDestroy {
     socket?: AuthenticatedSocket,
     server?: Server,
   ): Promise<void> {
-    try {
-      const userProfile = await this.profileService.getUserProfile(userId);
+    if (!socket && !server) {
+      this.logger.warn(
+        `Cannot notify user_joined: neither socket nor server provided`,
+      );
+      return;
+    }
 
-      if (socket) {
-        socket.to(`venue:${venueId}`).emit(WS_EVENTS.USER_JOINED, {
-          user: userProfile,
-          timestamp: Date.now(),
-        });
-        this.logger.debug(
-          `Notified venue ${venueId} of user ${userId} joining (excluded self)`,
-        );
-      } else if (server) {
-        server.to(`venue:${venueId}`).emit(WS_EVENTS.USER_JOINED, {
-          user: userProfile,
-          timestamp: Date.now(),
-        });
-        this.logger.debug(
-          `Notified venue ${venueId} of user ${userId} joining (all users)`,
-        );
-      } else {
-        this.logger.warn(
-          `Cannot notify user_joined: neither socket nor server provided`,
-        );
+    try {
+      const { recipientIds, profile } =
+        await this.profileService.getJoinAudience(userId, venueId);
+
+      const payload = { user: profile, timestamp: Date.now() };
+
+      for (const recipientId of recipientIds) {
+        const room = `user:${recipientId}`;
+        if (socket) {
+          socket.to(room).emit(WS_EVENTS.USER_JOINED, payload);
+        } else {
+          server!.to(room).emit(WS_EVENTS.USER_JOINED, payload);
+        }
       }
+
+      this.logger.debug(
+        `Notified ${recipientIds.length} preference-matched user(s) at venue ${venueId} that ${userId} joined`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to broadcast user_joined for ${userId}`,
