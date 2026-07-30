@@ -66,6 +66,14 @@ export class VenueResponseDto {
   ownerId: string | null;
 
   @ApiProperty({
+    description: 'URL of the venue image, or null if none has been uploaded',
+    example:
+      'https://res.cloudinary.com/demo/image/upload/v1234567890/venues/venue123.jpg',
+    nullable: true,
+  })
+  imageUrl: string | null;
+
+  @ApiProperty({
     description: 'Timestamp when the venue was created',
     example: '2024-01-15T10:30:00.000Z',
     type: Date,

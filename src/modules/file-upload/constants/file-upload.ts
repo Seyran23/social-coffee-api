@@ -2,6 +2,7 @@ export const PROJECT_NAME = 'social-coffee';
 
 export enum UploadFolder {
   PROFILE = 'profile-images',
+  VENUE = 'venue-images',
 }
 
 export const FILE_SIZE_LIMITS = {
@@ -48,6 +49,13 @@ export const IMAGE_TRANSFORMATIONS = {
   BANNER: {
     width: 1200,
     height: 400,
+    crop: 'fill' as const,
+    quality: 'auto' as const,
+    format: 'auto' as const,
+  },
+  VENUE: {
+    width: 800,
+    height: 600,
     crop: 'fill' as const,
     quality: 'auto' as const,
     format: 'auto' as const,

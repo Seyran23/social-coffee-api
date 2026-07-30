@@ -15,8 +15,13 @@ export const VENUE_MESSAGES = {
   VIEW_RECORDED: 'Venue view recorded',
   CHECK_IN_SUCCESS: 'Successfully checked in to venue',
   CHECK_OUT_SUCCESS: 'Successfully checked out from venue',
+  VENUE_IMAGE_UPLOADED: 'Venue image uploaded successfully',
+  VENUE_IMAGE_DELETED: 'Venue image deleted successfully',
 
   VENUE_NOT_FOUND: 'Venue not found',
+  NO_VENUE_IMAGE_TO_DELETE: 'This venue has no image to delete',
+  VENUE_IMAGE_UPLOAD_FAILED: 'Failed to upload venue image',
+  VENUE_IMAGE_DELETE_FAILED: 'Failed to delete venue image',
   INVALID_MAP_URL: 'Invalid Google Maps URL. Could not extract coordinates.',
   VENUE_COORDINATES_UNAVAILABLE:
     'Venue coordinates not available for geofence check',

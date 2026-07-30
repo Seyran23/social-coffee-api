@@ -1,5 +1,6 @@
 export enum UploadFolder {
   PROFILE = 'profile-images',
+  VENUE = 'venue-images',
 }
 
 export interface UploadOptions {

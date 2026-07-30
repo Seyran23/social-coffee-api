@@ -114,6 +114,8 @@ model Venue {
   geofenceMeters Int         @default(150) @map("geofence_meters")
   status         VenueStatus @default(ACTIVE)
   ownerId        String?     @map("owner_id")
+  imageUrl       String?     @map("image_url")
+  imagePublicId  String?     @map("image_public_id")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
 

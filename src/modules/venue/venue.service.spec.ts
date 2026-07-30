@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { ChatGateway } from '@/modules/chat/chat.gateway';
+import { FileUploadService } from '@/modules/file-upload/services/file-upload.service';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import * as MapUtils from '@/modules/venue/utils/map-url.util';
@@ -37,6 +38,7 @@ describe('VenueService', () => {
   let venueService: VenueService;
   let prismaService: PrismaService;
   let redisService: RedisService;
+  let fileUploadService: FileUploadService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -78,12 +80,20 @@ describe('VenueService', () => {
             flushUserChats: vi.fn(),
           },
         },
+        {
+          provide: FileUploadService,
+          useValue: {
+            replaceFile: vi.fn(),
+            deleteFile: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
     venueService = module.get<VenueService>(VenueService);
     prismaService = module.get<PrismaService>(PrismaService);
     redisService = module.get<RedisService>(RedisService);
+    fileUploadService = module.get<FileUploadService>(FileUploadService);
 
     vi.clearAllMocks();
   });
@@ -607,6 +617,106 @@ describe('VenueService', () => {
       ).rejects.toThrow(
         new BadRequestException(VENUE_MESSAGES.VENUE_PERMANENTLY_CLOSED),
       );
+    });
+  });
+
+  describe('uploadVenueImage', () => {
+    const venueId = 'venue-img-1';
+    const file = { originalname: 'photo.jpg' } as Express.Multer.File;
+
+    it('should throw NotFoundException when venue does not exist', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        venueService.uploadVenueImage(venueId, file),
+      ).rejects.toThrow(new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND));
+    });
+
+    it('should replace the image and persist the new url/publicId', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({
+        id: venueId,
+        imagePublicId: 'old-public-id',
+      } as any);
+      vi.spyOn(fileUploadService, 'replaceFile').mockResolvedValue({
+        secureUrl: 'https://cdn.test/venue.jpg',
+        publicId: 'new-public-id',
+      } as any);
+      vi.spyOn(prismaService.venue, 'update').mockResolvedValue({
+        imageUrl: 'https://cdn.test/venue.jpg',
+      } as any);
+
+      const result = await venueService.uploadVenueImage(venueId, file);
+
+      expect(fileUploadService.replaceFile).toHaveBeenCalledWith(
+        file,
+        'old-public-id',
+        expect.objectContaining({ folder: 'venue-images' }),
+      );
+      expect(prismaService.venue.update).toHaveBeenCalledWith({
+        where: { id: venueId },
+        data: {
+          imageUrl: 'https://cdn.test/venue.jpg',
+          imagePublicId: 'new-public-id',
+        },
+        select: { imageUrl: true },
+      });
+      expect(result).toEqual({ imageUrl: 'https://cdn.test/venue.jpg' });
+    });
+
+    it('should wrap storage failures in a BadRequestException', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({
+        id: venueId,
+        imagePublicId: null,
+      } as any);
+      vi.spyOn(fileUploadService, 'replaceFile').mockRejectedValue(
+        new Error('storage down'),
+      );
+
+      await expect(
+        venueService.uploadVenueImage(venueId, file),
+      ).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.VENUE_IMAGE_UPLOAD_FAILED),
+      );
+    });
+  });
+
+  describe('deleteVenueImage', () => {
+    const venueId = 'venue-img-2';
+
+    it('should throw NotFoundException when venue does not exist', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue(null);
+
+      await expect(venueService.deleteVenueImage(venueId)).rejects.toThrow(
+        new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND),
+      );
+    });
+
+    it('should throw BadRequestException when the venue has no image', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({
+        id: venueId,
+        imagePublicId: null,
+      } as any);
+
+      await expect(venueService.deleteVenueImage(venueId)).rejects.toThrow(
+        new BadRequestException(VENUE_MESSAGES.NO_VENUE_IMAGE_TO_DELETE),
+      );
+    });
+
+    it('should delete from storage and clear the venue image fields', async () => {
+      vi.spyOn(prismaService.venue, 'findUnique').mockResolvedValue({
+        id: venueId,
+        imagePublicId: 'public-id-1',
+      } as any);
+      vi.spyOn(fileUploadService, 'deleteFile').mockResolvedValue(undefined);
+      vi.spyOn(prismaService.venue, 'update').mockResolvedValue({} as any);
+
+      await venueService.deleteVenueImage(venueId);
+
+      expect(fileUploadService.deleteFile).toHaveBeenCalledWith('public-id-1');
+      expect(prismaService.venue.update).toHaveBeenCalledWith({
+        where: { id: venueId },
+        data: { imageUrl: null, imagePublicId: null },
+      });
     });
   });
 });

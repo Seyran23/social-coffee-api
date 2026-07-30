@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -10,10 +11,17 @@ import {
   VenueStatus,
   VisitSource,
 } from '@prisma/client';
+import 'multer';
 
 import { LoggerService } from '@/common/logger/logger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { ChatGateway } from '@/modules/chat/chat.gateway';
+import {
+  FILE_SIZE_LIMITS,
+  IMAGE_TRANSFORMATIONS,
+} from '@/modules/file-upload/constants/file-upload';
+import { UploadFolder } from '@/modules/file-upload/interfaces/upload-options.interface';
+import { FileUploadService } from '@/modules/file-upload/services/file-upload.service';
 import { RedisService } from '@/modules/redis/redis.service';
 import { VENUE_DISCOVERY } from '@/modules/venue/constants/discovery';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
@@ -38,6 +46,7 @@ export class VenueService {
     private readonly logger: LoggerService,
     private readonly redis: RedisService,
     private readonly chatGateway: ChatGateway,
+    private readonly fileUploadService: FileUploadService,
   ) {}
 
   private async getVenueById(
@@ -179,6 +188,7 @@ export class VenueService {
           geofenceMeters: true,
           status: true,
           ownerId: true,
+          imageUrl: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -317,6 +327,82 @@ export class VenueService {
     );
 
     return updatedVenue;
+  }
+
+  async uploadVenueImage(
+    venueId: string,
+    file: Express.Multer.File,
+  ): Promise<{ imageUrl: string }> {
+    const venue = await this.database.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true, imagePublicId: true },
+    });
+
+    if (!venue) {
+      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
+    }
+
+    try {
+      const uploadResult = await this.fileUploadService.replaceFile(
+        file,
+        venue.imagePublicId ?? undefined,
+        {
+          folder: UploadFolder.VENUE,
+          prefix: 'venue',
+          transformation: IMAGE_TRANSFORMATIONS.VENUE,
+          maxSize: FILE_SIZE_LIMITS.IMAGE,
+        },
+      );
+
+      const updatedVenue = await this.database.venue.update({
+        where: { id: venueId },
+        data: {
+          imageUrl: uploadResult.secureUrl,
+          imagePublicId: uploadResult.publicId,
+        },
+        select: { imageUrl: true },
+      });
+
+      if (!updatedVenue.imageUrl) {
+        throw new InternalServerErrorException('Failed to save venue image');
+      }
+
+      this.logger.log(`Uploaded image for venue ${venueId}`);
+
+      return { imageUrl: updatedVenue.imageUrl };
+    } catch (error) {
+      this.logger.error(`Failed to upload image for venue ${venueId}`, error);
+      throw new BadRequestException(VENUE_MESSAGES.VENUE_IMAGE_UPLOAD_FAILED);
+    }
+  }
+
+  async deleteVenueImage(venueId: string): Promise<void> {
+    const venue = await this.database.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true, imagePublicId: true },
+    });
+
+    if (!venue) {
+      throw new NotFoundException(VENUE_MESSAGES.VENUE_NOT_FOUND);
+    }
+
+    if (!venue.imagePublicId) {
+      throw new BadRequestException(VENUE_MESSAGES.NO_VENUE_IMAGE_TO_DELETE);
+    }
+
+    try {
+      await this.fileUploadService.deleteFile(venue.imagePublicId);
+
+      await this.database.venue.update({
+        where: { id: venueId },
+        data: { imageUrl: null, imagePublicId: null },
+      });
+
+      this.logger.log(`Deleted image for venue ${venueId}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete image for venue ${venueId}`, error);
+      throw new BadRequestException(VENUE_MESSAGES.VENUE_IMAGE_DELETE_FAILED);
+    }
   }
 
   async deleteVenue(id: string): Promise<Venue> {

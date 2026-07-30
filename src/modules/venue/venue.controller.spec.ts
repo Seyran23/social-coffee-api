@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ResponseBuilder } from '@/common/utils/response-builder';
+import { PrismaService } from '@/database/prisma.service';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import { VenueController } from '@/modules/venue/venue.controller';
 import { VenueService } from '@/modules/venue/venue.service';
@@ -12,6 +14,14 @@ describe('VenueController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
+      imports: [
+        ThrottlerModule.forRoot([
+          {
+            ttl: 60000,
+            limit: 10,
+          },
+        ]),
+      ],
       controllers: [VenueController],
       providers: [
         {
@@ -28,6 +38,14 @@ describe('VenueController', () => {
             deleteVenue: vi.fn(),
             checkIn: vi.fn(),
             checkOut: vi.fn(),
+            uploadVenueImage: vi.fn(),
+            deleteVenueImage: vi.fn(),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            venue: { findUnique: vi.fn() },
           },
         },
       ],
@@ -252,6 +270,46 @@ describe('VenueController', () => {
       expect(venueService.checkOut).toHaveBeenCalledWith('user-1', 'venue-1');
       expect(result).toEqual(
         ResponseBuilder.success(null, VENUE_MESSAGES.CHECK_OUT_SUCCESS),
+      );
+    });
+  });
+
+  describe('uploadVenueImage', () => {
+    it('should throw BadRequestException when no file is provided', async () => {
+      await expect(
+        venueController.uploadVenueImage('venue-1', undefined as any),
+      ).rejects.toThrow('No file provided');
+    });
+
+    it('should upload and return the image url', async () => {
+      const file = { originalname: 'photo.jpg' } as Express.Multer.File;
+      const mockResult = { imageUrl: 'https://cdn.test/venue.jpg' };
+      vi.spyOn(venueService, 'uploadVenueImage').mockResolvedValue(
+        mockResult as any,
+      );
+
+      const result = await venueController.uploadVenueImage('venue-1', file);
+
+      expect(venueService.uploadVenueImage).toHaveBeenCalledWith(
+        'venue-1',
+        file,
+      );
+      expect(result).toEqual(
+        ResponseBuilder.success(
+          mockResult,
+          VENUE_MESSAGES.VENUE_IMAGE_UPLOADED,
+        ),
+      );
+    });
+  });
+
+  describe('deleteVenueImage', () => {
+    it('should delete the image and return success', async () => {
+      const result = await venueController.deleteVenueImage('venue-1');
+
+      expect(venueService.deleteVenueImage).toHaveBeenCalledWith('venue-1');
+      expect(result).toEqual(
+        ResponseBuilder.success(null, VENUE_MESSAGES.VENUE_IMAGE_DELETED),
       );
     });
   });

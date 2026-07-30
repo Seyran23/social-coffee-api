@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,9 +10,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -26,7 +30,10 @@ import {
 } from '@/common/decorators/swagger.decorator';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
+import { VenueOwnershipGuard } from '@/common/guards/venue-ownership.guard';
 import { ResponseBuilder } from '@/common/utils/response-builder';
+import { UploadFile } from '@/modules/file-upload/decorators/upload-file.decorator';
+import { FileUploadInterceptor } from '@/modules/file-upload/interceptors/file-upload.interceptor';
 import { VENUE_MESSAGES } from '@/modules/venue/constants/messages';
 import { AssignOwnerDto } from '@/modules/venue/dto/request/assign-owner.dto';
 import { ChangeStatusDto } from '@/modules/venue/dto/request/change-status.dto';
@@ -36,6 +43,7 @@ import { GetNearbyVenuesQueryDto } from '@/modules/venue/dto/request/get-nearby-
 import { GetVenuesQueryDto } from '@/modules/venue/dto/request/get-venues-query.dto';
 import { UpdateVenueDto } from '@/modules/venue/dto/request/update-venue.dto';
 import { QRCodeResponseDto } from '@/modules/venue/dto/response/qrcode-response.dto';
+import { VenueImageUploadDto } from '@/modules/venue/dto/response/venue-image-upload.dto';
 import { VenueResponseDto } from '@/modules/venue/dto/response/venue-response.dto';
 import { VenuePaginationResponseDto } from '@/modules/venue/dto/response/venue-with-pagination-response.dto';
 import { VenueWithQrCodeDto } from '@/modules/venue/dto/response/venue-with-qrcode.dto';
@@ -328,6 +336,59 @@ export class VenueController {
       assignOwnerDto.userId,
     );
     return ResponseBuilder.success(venue, VENUE_MESSAGES.OWNER_ASSIGNED);
+  }
+
+  @Post(':id/image')
+  @UseGuards(JwtAuthGuard, RolesGuard, VenueOwnershipGuard, ThrottlerGuard)
+  @Roles(Role.CAFE_MANAGER, Role.ADMIN)
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Upload or replace venue image',
+    description:
+      'Upload a new venue image or replace the existing one. Maximum file size: 5MB. Supported formats: JPEG, PNG, WebP. The old image is automatically deleted. Requires venue ownership or admin role.',
+  })
+  @ApiSuccessResponse(VenueImageUploadDto, {
+    description: VENUE_MESSAGES.VENUE_IMAGE_UPLOADED,
+  })
+  @ApiErrorResponse(400, 'No file provided or invalid file type')
+  @ApiErrorResponse(404, VENUE_MESSAGES.VENUE_NOT_FOUND)
+  @ApiErrorResponse(413, 'Payload Too Large - File exceeds 5MB limit')
+  @ApiCommonErrorResponses()
+  @UseInterceptors(FileUploadInterceptor)
+  @UploadFile({
+    fieldName: 'venueImage',
+    maxSize: 5 * 1024 * 1024, // 5MB
+    description: 'Venue image file (JPEG, PNG, WebP)',
+  })
+  async uploadVenueImage(
+    @Param('id') venueId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    const image = await this.venueService.uploadVenueImage(venueId, file);
+    return ResponseBuilder.success(image, VENUE_MESSAGES.VENUE_IMAGE_UPLOADED);
+  }
+
+  @Delete(':id/image')
+  @UseGuards(JwtAuthGuard, RolesGuard, VenueOwnershipGuard)
+  @Roles(Role.CAFE_MANAGER, Role.ADMIN)
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete venue image',
+    description:
+      'Remove the current venue image. It is permanently deleted from cloud storage. Requires venue ownership or admin role.',
+  })
+  @ApiMessageResponse(200, VENUE_MESSAGES.VENUE_IMAGE_DELETED)
+  @ApiErrorResponse(400, VENUE_MESSAGES.NO_VENUE_IMAGE_TO_DELETE)
+  @ApiErrorResponse(404, VENUE_MESSAGES.VENUE_NOT_FOUND)
+  async deleteVenueImage(@Param('id') venueId: string) {
+    await this.venueService.deleteVenueImage(venueId);
+    return ResponseBuilder.success(null, VENUE_MESSAGES.VENUE_IMAGE_DELETED);
   }
 
   @Post(':id/view')
