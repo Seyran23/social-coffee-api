@@ -210,10 +210,9 @@ describe('AuthService', () => {
     it('should return undefined if user is not found', async () => {
       vi.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
 
-      const result = await authService.forgotPassword(
-        { email: 'fake@email.com' },
-        'u1',
-      );
+      const result = await authService.forgotPassword({
+        email: 'fake@email.com',
+      });
 
       expect(result).toBeUndefined();
     });
@@ -227,7 +226,7 @@ describe('AuthService', () => {
         'reset-token',
       );
 
-      const result = await authService.forgotPassword({ email: 'e' }, 'u1');
+      const result = await authService.forgotPassword({ email: 'e' });
 
       expect(result).toBe('reset-token');
     });

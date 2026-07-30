@@ -21,7 +21,6 @@ import {
   ApiMessageResponse,
   ApiSuccessResponse,
 } from '@/common/decorators/swagger.decorator';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { JwtRefreshGuard } from '@/common/guards/jwt-refresh.guard';
 import {
   clearRefreshTokenCookie,
@@ -136,8 +135,6 @@ export class AuthController {
 
   @Post('forgot-password')
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('jwt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Request password reset',
@@ -149,7 +146,6 @@ export class AuthController {
   })
   @ApiAllErrorResponses()
   async forgotPassword(
-    @CurrentUser('userId') userId: string,
     @Body() forgotPasswordDto: ForgotPasswordDto,
     @Ip() ipAddress: string,
     @Req() req: Request,
@@ -158,7 +154,6 @@ export class AuthController {
 
     const resetToken = await this.authService.forgotPassword(
       forgotPasswordDto,
-      userId,
       ipAddress,
       userAgent,
     );

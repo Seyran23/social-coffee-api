@@ -157,14 +157,13 @@ export class AuthService {
 
   async forgotPassword(
     forgotPasswordDto: ForgotPasswordDto,
-    userId: string,
     ipAddress?: string,
     deviceInfo?: string,
   ): Promise<string | undefined> {
     const { email } = forgotPasswordDto;
 
     const user = await this.database.user.findUnique({
-      where: { id: userId, email },
+      where: { email },
     });
 
     if (!user) {

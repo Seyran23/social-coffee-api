@@ -169,7 +169,6 @@ describe('AuthController', () => {
       vi.spyOn(authService, 'forgotPassword').mockResolvedValue('reset-token');
 
       const result = await authController.forgotPassword(
-        'user-1',
         forgotPasswordDto,
         '127.0.0.1',
         mockRequest,
@@ -177,7 +176,6 @@ describe('AuthController', () => {
 
       expect(authService.forgotPassword).toHaveBeenCalledWith(
         forgotPasswordDto,
-        'user-1',
         '127.0.0.1',
         'test-agent',
       );
@@ -194,7 +192,6 @@ describe('AuthController', () => {
       vi.spyOn(authService, 'forgotPassword').mockResolvedValue(undefined);
 
       const result = await authController.forgotPassword(
-        'user-1',
         forgotPasswordDto,
         '127.0.0.1',
         mockRequest,
