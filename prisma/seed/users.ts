@@ -1,9 +1,9 @@
 import { Gender, LookingFor, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { avatarUrl, PASSWORD, prisma, step } from './config';
+import { avatarUrl, ME_EMAIL, PASSWORD, prisma, step } from './config';
 
-// Hand-written profiles — kept as-is, "me@test.com" is intentionally left
+// Hand-written profiles — kept as-is. ME_EMAIL is intentionally left
 // unassigned to any venue below so you can check it in yourself via a real
 // QR scan and see everyone else already there.
 function handWrittenUsers(
@@ -12,15 +12,15 @@ function handWrittenUsers(
 ): Array<Parameters<typeof prisma.user.upsert>[0]> {
   return [
     {
-      where: { email: 'me@test.com' },
+      where: { email: ME_EMAIL },
       // Not overwritten on update: this account is meant for you to test the
-      // real profile-photo upload flow against, so a re-seed shouldn't clobber
-      // whatever you've uploaded.
+      // real profile-photo upload flow (and forgot-password with a real inbox)
+      // against, so a re-seed shouldn't clobber whatever you've uploaded/changed.
       update: {},
       create: {
         firstName: 'John',
         lastName: 'Doe',
-        email: 'me@test.com',
+        email: ME_EMAIL,
         passwordHash,
         gender: Gender.MALE,
         birthDate: new Date('1995-06-15'),

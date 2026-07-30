@@ -14,7 +14,7 @@ import {
 import { checkInUser } from './presence';
 
 /**
- * Women who match me@test.com's stated preference (FEMALE, 20-30) and who have
+ * Women who match ME_EMAIL's stated preference (FEMALE, 20-30) and who have
  * ALREADY liked that account — so liking either of them back produces an
  * instant mutual match, with no second device needed.
  */
@@ -24,7 +24,7 @@ const ADMIRERS = [
 ] as const;
 
 /**
- * Arm a one-tap like -> match -> chat scenario for the reserved `me@test.com`
+ * Arm a one-tap like -> match -> chat scenario for the reserved ME_EMAIL
  * account. Idempotent: clears any previous match state first, so you can re-run
  * this to reset after each test.
  */

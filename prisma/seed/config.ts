@@ -59,7 +59,7 @@ export const DEMO_VENUE_ID = VENUES[0].id;
  * checked in by the presence step, so you can scan a QR yourself and see the
  * crowd already there.
  */
-export const ME_EMAIL = 'me@test.com';
+export const ME_EMAIL = 'seyranm230@gmail.com';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 

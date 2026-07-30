@@ -31,7 +31,7 @@ export async function checkInUser(
 /**
  * Spread the seeded users across the venues, 8 per venue.
  *
- * `me@test.com` is deliberately excluded so it stays "outside" and you can walk
+ * ME_EMAIL is deliberately excluded so it stays "outside" and you can walk
  * it in yourself via a QR scan / check-in call.
  *
  * Returns the per-venue user groups so the chat step can pair people who are
