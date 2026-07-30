@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { PrismaClient } from '@prisma/client';
+import { Gender, PrismaClient } from '@prisma/client';
 import * as dotenv from 'dotenv';
 import Redis from 'ioredis';
 
@@ -62,6 +62,26 @@ export const DEMO_VENUE_ID = VENUES[0].id;
 export const ME_EMAIL = 'me@test.com';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
+
+const MALE_AVATAR_COUNT = 100;
+const FEMALE_AVATAR_COUNT = 100;
+const NEUTRAL_AVATAR_COUNT = 10;
+
+/**
+ * Deterministic, gender-appropriate placeholder photo (randomuser.me's static
+ * portrait sets — stable URLs, no API key) so seeded profiles show a real-
+ * looking face instead of every user sharing one generic avatar.
+ */
+export function avatarUrl(gender: Gender, index: number): string {
+  switch (gender) {
+    case Gender.MALE:
+      return `https://randomuser.me/api/portraits/men/${index % MALE_AVATAR_COUNT}.jpg`;
+    case Gender.FEMALE:
+      return `https://randomuser.me/api/portraits/women/${index % FEMALE_AVATAR_COUNT}.jpg`;
+    default:
+      return `https://randomuser.me/api/portraits/lego/${index % NEUTRAL_AVATAR_COUNT}.jpg`;
+  }
+}
 
 export function createRedisClient(): Redis {
   const host = process.env.REDIS_HOST ?? 'localhost';

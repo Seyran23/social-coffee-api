@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import type Redis from 'ioredis';
 
 import {
+  avatarUrl,
   DAY_MS,
   DEMO_VENUE_ID,
   ME_EMAIL,
@@ -47,10 +48,10 @@ export async function seedArmedMatch(redis: Redis): Promise<void> {
 
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
-  for (const admirer of ADMIRERS) {
+  for (const [i, admirer] of ADMIRERS.entries()) {
     const user = await prisma.user.upsert({
       where: { email: admirer.email },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 90 + i) },
       create: {
         email: admirer.email,
         passwordHash,
@@ -58,6 +59,7 @@ export async function seedArmedMatch(redis: Redis): Promise<void> {
         lastName: admirer.lastName,
         gender: Gender.FEMALE,
         birthDate: new Date(new Date().getFullYear() - admirer.age, 3, 12),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 90 + i),
         bio: `Hi, I'm ${admirer.firstName} — coffee and good conversation.`,
         role: Role.USER,
         preference: {

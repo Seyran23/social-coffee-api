@@ -1,7 +1,7 @@
 import { Gender, LookingFor, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { PASSWORD, prisma, step } from './config';
+import { avatarUrl, PASSWORD, prisma, step } from './config';
 
 // Hand-written profiles — kept as-is, "me@test.com" is intentionally left
 // unassigned to any venue below so you can check it in yourself via a real
@@ -13,6 +13,9 @@ function handWrittenUsers(
   return [
     {
       where: { email: 'me@test.com' },
+      // Not overwritten on update: this account is meant for you to test the
+      // real profile-photo upload flow against, so a re-seed shouldn't clobber
+      // whatever you've uploaded.
       update: {},
       create: {
         firstName: 'John',
@@ -21,6 +24,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.MALE,
         birthDate: new Date('1995-06-15'),
+        profileImageUrl: avatarUrl(Gender.MALE, 0),
         bio: 'Software engineer who loves coffee and obscure indie bands.',
         role: Role.USER,
         preference: {
@@ -45,7 +49,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'sarah@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 0) },
       create: {
         firstName: 'Sarah',
         lastName: 'Smith',
@@ -53,6 +57,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1997-03-22'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 0),
         bio: 'Barista by day, artist by night.',
         preference: {
           create: {
@@ -73,7 +78,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'jessica@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 1) },
       create: {
         firstName: 'Jessica',
         lastName: 'Chen',
@@ -81,6 +86,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1996-08-10'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 1),
         bio: 'Full stack dev. Coffee addict. Vinyl collector.',
         preference: {
           create: {
@@ -102,7 +108,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'emily@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 2) },
       create: {
         firstName: 'Emily',
         lastName: 'Jones',
@@ -110,6 +116,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('2001-11-05'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 2),
         bio: 'Just here to make friends and travel.',
         preference: {
           create: {
@@ -129,7 +136,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'hannah@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 3) },
       create: {
         firstName: 'Hannah',
         lastName: 'Montana',
@@ -137,6 +144,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('2004-01-01'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 3),
         bio: 'Student looking for study buddies.',
         preference: {
           create: {
@@ -156,7 +164,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'olivia@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 4) },
       create: {
         firstName: 'Olivia',
         lastName: 'Rodrigo',
@@ -164,6 +172,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1993-02-20'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 4),
         bio: 'Photographer exploring the city.',
         preference: {
           create: {
@@ -183,7 +192,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'alex@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.MALE, 1) },
       create: {
         firstName: 'Alex',
         lastName: 'Turner',
@@ -191,6 +200,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.MALE,
         birthDate: new Date('1995-01-06'),
+        profileImageUrl: avatarUrl(Gender.MALE, 1),
         bio: 'Rockstar life. Love guitars and hair gel.',
         preference: {
           create: {
@@ -210,7 +220,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'lisa@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 5) },
       create: {
         firstName: 'Lisa',
         lastName: 'Kudrow',
@@ -218,6 +228,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1985-07-30'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 5),
         bio: 'Love smelly cats and guitars.',
         preference: {
           create: {
@@ -237,7 +248,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'rachel@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 6) },
       create: {
         firstName: 'Rachel',
         lastName: 'Green',
@@ -245,6 +256,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1998-05-05'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 6),
         bio: 'Gym rat. FPS gamer.',
         preference: {
           create: {
@@ -264,7 +276,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'sam@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.OTHER, 0) },
       create: {
         firstName: 'Sam',
         lastName: 'Smith',
@@ -272,6 +284,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.OTHER,
         birthDate: new Date('1996-05-19'),
+        profileImageUrl: avatarUrl(Gender.OTHER, 0),
         bio: 'Just being me.',
         preference: {
           create: {
@@ -291,7 +304,7 @@ function handWrittenUsers(
     },
     {
       where: { email: 'diana@test.com' },
-      update: {},
+      update: { profileImageUrl: avatarUrl(Gender.FEMALE, 7) },
       create: {
         firstName: 'Diana',
         lastName: 'Prince',
@@ -299,6 +312,7 @@ function handWrittenUsers(
         passwordHash,
         gender: Gender.FEMALE,
         birthDate: new Date('1999-03-22'),
+        profileImageUrl: avatarUrl(Gender.FEMALE, 7),
         bio: 'New here!',
         preference: {
           create: {
@@ -397,7 +411,7 @@ function generatedUsers(
 
     return {
       where: { email },
-      update: {},
+      update: { profileImageUrl: avatarUrl(person.gender, i) },
       create: {
         firstName: person.name,
         lastName,
@@ -405,6 +419,7 @@ function generatedUsers(
         passwordHash,
         gender: person.gender,
         birthDate,
+        profileImageUrl: avatarUrl(person.gender, i),
         bio: GENERATED_BIOS[i % GENERATED_BIOS.length],
         role: Role.USER,
         preference: {

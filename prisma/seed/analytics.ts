@@ -1,7 +1,7 @@
 import { Gender, Role, VisitSource } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { DAY_MS, PASSWORD, prisma, step, VENUES } from './config';
+import { avatarUrl, DAY_MS, PASSWORD, prisma, step, VENUES } from './config';
 
 /**
  * Venue owners for the analytics dashboard.
@@ -63,10 +63,13 @@ function timestampDaysAgo(daysAgo: number): Date {
 export async function seedVenueOwners(): Promise<void> {
   const passwordHash = await bcrypt.hash(PASSWORD, 12);
 
-  for (const manager of MANAGERS) {
+  for (const [i, manager] of MANAGERS.entries()) {
     const user = await prisma.user.upsert({
       where: { email: manager.email },
-      update: { role: Role.CAFE_MANAGER },
+      update: {
+        role: Role.CAFE_MANAGER,
+        profileImageUrl: avatarUrl(Gender.OTHER, i),
+      },
       create: {
         email: manager.email,
         passwordHash,
@@ -74,6 +77,7 @@ export async function seedVenueOwners(): Promise<void> {
         firstName: 'Cafe',
         lastName: 'Manager',
         gender: Gender.OTHER,
+        profileImageUrl: avatarUrl(Gender.OTHER, i),
         bio: 'Venue manager (analytics demo account)',
         birthDate: new Date('1988-01-01'),
       },
