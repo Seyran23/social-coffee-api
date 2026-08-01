@@ -12,6 +12,7 @@ import { PreferenceModule } from '@/modules/preference/preference.module';
 import { PresenceModule } from '@/modules/presence/presence.module';
 import { ProfileModule } from '@/modules/profile/profile.module';
 import { RedisModule } from '@/modules/redis/redis.module';
+import { UserModule } from '@/modules/user/user.module';
 import { VenueModule } from '@/modules/venue/venue.module';
 import { VenueAnalyticsModule } from '@/modules/venue-analytics/venue-analytics.module';
 
@@ -40,6 +41,7 @@ import { HealthModule } from './modules/health/health.module';
     PrismaModule,
     RedisModule,
     AuthModule,
+    UserModule,
     VenueModule,
     FileUploadModule,
     PreferenceModule,
