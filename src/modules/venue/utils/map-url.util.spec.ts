@@ -99,6 +99,13 @@ describe('extractLatLonFromGoogleMaps', () => {
     expect(result).toEqual({ latitude: 40.7128, longitude: -74.006 });
   });
 
+  it('should prefer the precise !3d/!4d pin over the @lat,lon viewport center when a URL has both', async () => {
+    const url =
+      'https://www.google.com/maps/place/My+Cafe/@40.7128,-74.0060,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d40.712753!4d-74.005972!16s%2Fg%2F11abc';
+    const result = await extractLatLonFromGoogleMaps(url);
+    expect(result).toEqual({ latitude: 40.712753, longitude: -74.005972 });
+  });
+
   it('should return null when no coordinates are present and axios response has no coords', async () => {
     const shortUrl = 'https://goo.gl/maps/shortlink';
     mockedAxios.get = vi.fn().mockResolvedValue({
