@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 
 import { AuthenticatedSocket } from '@/common/interfaces/websocket/authenticated-socket.interface';
 import { LoggerService } from '@/common/logger/logger.service';
+import { ChatGateway } from '@/modules/chat/chat.gateway';
 import { RECONNECTION_GRACE_PERIOD_MS } from '@/modules/presence/constants/reconnection-time';
 import { WS_EVENTS } from '@/modules/presence/constants/ws-event-namings';
 import { ProfileService } from '@/modules/profile/profile.service';
@@ -19,6 +20,7 @@ export class PresenceService implements OnModuleDestroy {
   constructor(
     private readonly redis: RedisService,
     private readonly profileService: ProfileService,
+    private readonly chatGateway: ChatGateway,
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext(PresenceService.name);
@@ -182,8 +184,10 @@ export class PresenceService implements OnModuleDestroy {
 
     if (currentVenue === venueId) {
       this.logger.log(
-        `User ${userId} grace period expired in venue ${venueId} — broadcasting user_left`,
+        `User ${userId} grace period expired in venue ${venueId} — checking out`,
       );
+      await this.redis.removeUserFromVenue(userId, venueId);
+      await this.chatGateway.flushUserChats(userId);
       this.notifyVenueUserLeft(userId, venueId, server);
     } else {
       this.logger.debug(

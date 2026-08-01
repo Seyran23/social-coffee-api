@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoggerService } from '@/common/logger/logger.service';
+import { ChatGateway } from '@/modules/chat/chat.gateway';
 import { WS_EVENTS } from '@/modules/presence/constants/ws-event-namings';
 import { PresenceService } from '@/modules/presence/presence.service';
 import { ProfileService } from '@/modules/profile/profile.service';
@@ -11,6 +12,7 @@ describe('PresenceService', () => {
   let presenceService: PresenceService;
   let redisService: RedisService;
   let profileService: ProfileService;
+  let chatGateway: ChatGateway;
 
   let mockClient: any;
   let mockServer: any;
@@ -29,6 +31,7 @@ describe('PresenceService', () => {
             getUserCurrentVenue: vi.fn(),
             updateHeartbeat: vi.fn(),
             refreshUserVenuePresence: vi.fn(),
+            removeUserFromVenue: vi.fn(),
           },
         },
         {
@@ -37,6 +40,12 @@ describe('PresenceService', () => {
             discoverProfiles: vi.fn(),
             getUserProfile: vi.fn(),
             getJoinAudience: vi.fn(),
+          },
+        },
+        {
+          provide: ChatGateway,
+          useValue: {
+            flushUserChats: vi.fn(),
           },
         },
         {
@@ -55,6 +64,7 @@ describe('PresenceService', () => {
     presenceService = module.get<PresenceService>(PresenceService);
     redisService = module.get<RedisService>(RedisService);
     profileService = module.get<ProfileService>(ProfileService);
+    chatGateway = module.get<ChatGateway>(ChatGateway);
 
     mockClient = {
       id: 'socket-123',
@@ -431,6 +441,11 @@ describe('PresenceService', () => {
       // Advance fake timers past the grace period
       await vi.runAllTimersAsync();
 
+      expect(redisService.removeUserFromVenue).toHaveBeenCalledWith(
+        'user-1',
+        'venue-1',
+      );
+      expect(chatGateway.flushUserChats).toHaveBeenCalledWith('user-1');
       expect(mockServer.to).toHaveBeenCalledWith('venue:venue-1');
       expect(mockServer.emit).toHaveBeenCalledWith(
         WS_EVENTS.USER_LEFT,
