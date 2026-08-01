@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { Role } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ResponseBuilder } from '@/common/utils/response-builder';
@@ -194,12 +195,28 @@ describe('VenueController', () => {
       const mockVenue = { id: 'venue-1', name: 'Updated Cafe' };
       vi.spyOn(venueService, 'updateVenue').mockResolvedValue(mockVenue as any);
 
-      const result = await venueController.updateVenue('venue-1', dto);
+      const result = await venueController.updateVenue(
+        'venue-1',
+        dto,
+        Role.ADMIN,
+      );
 
       expect(venueService.updateVenue).toHaveBeenCalledWith('venue-1', dto);
       expect(result).toEqual(
         ResponseBuilder.success(mockVenue, VENUE_MESSAGES.VENUE_UPDATED),
       );
+    });
+
+    it('strips status from the body for a non-admin caller', async () => {
+      const dto: any = { name: 'Updated Cafe', status: 'PERMANENTLY_CLOSED' };
+      const mockVenue = { id: 'venue-1', name: 'Updated Cafe' };
+      vi.spyOn(venueService, 'updateVenue').mockResolvedValue(mockVenue as any);
+
+      await venueController.updateVenue('venue-1', dto, Role.CAFE_MANAGER);
+
+      expect(venueService.updateVenue).toHaveBeenCalledWith('venue-1', {
+        name: 'Updated Cafe',
+      });
     });
   });
 

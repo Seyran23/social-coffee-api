@@ -204,13 +204,13 @@ export class VenueController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard, VenueOwnershipGuard)
+  @Roles(Role.CAFE_MANAGER, Role.ADMIN)
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary: 'Update venue',
     description:
-      'Update venue information such as name, map URL, or geofence radius. Requires admin role.',
+      'Update venue information such as name, map URL, or geofence radius. Requires venue ownership or admin role. Only an admin may change venue status through this endpoint.',
   })
   @ApiSuccessResponse(VenueResponseDto, {
     description: VENUE_MESSAGES.VENUE_UPDATED,
@@ -219,7 +219,11 @@ export class VenueController {
   async updateVenue(
     @Param('id') id: string,
     @Body() updateVenueDto: UpdateVenueDto,
+    @CurrentUser('role') role: Role,
   ) {
+    if (role !== Role.ADMIN) {
+      delete updateVenueDto.status;
+    }
     const venue = await this.venueService.updateVenue(id, updateVenueDto);
     return ResponseBuilder.success(venue, VENUE_MESSAGES.VENUE_UPDATED);
   }
