@@ -8,6 +8,8 @@ import { HealthDto } from '@/modules/health/dto/health.dto';
 import { PrismaHealthIndicator } from '@/modules/health/indicators/prisma.health';
 import { RedisHealthIndicator } from '@/modules/health/indicators/redis.health';
 
+import { version as PACKAGE_VERSION } from '@root/package.json';
+
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
@@ -31,7 +33,8 @@ export class HealthController {
     return ResponseBuilder.success(
       {
         uptime: process.uptime(),
-        version: process.env.npm_package_version ?? 'dev',
+        version: PACKAGE_VERSION,
+        commit: process.env.GIT_SHA ?? 'dev',
       },
       'Health check successful',
     );
@@ -47,7 +50,8 @@ export class HealthController {
     return ResponseBuilder.success(
       {
         uptime: process.uptime(),
-        version: process.env.npm_package_version ?? 'dev',
+        version: PACKAGE_VERSION,
+        commit: process.env.GIT_SHA ?? 'dev',
       },
       'alive',
     );

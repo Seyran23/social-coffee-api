@@ -30,6 +30,20 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - run: flyctl deploy --remote-only
+      - run: >-
+          flyctl deploy --remote-only
+          --env GIT_SHA=${{ github.event.workflow_run.head_sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # Confirms the app is actually serving the commit we just deployed —
+      # catches a silent no-op deploy or stale instance still taking traffic.
+      - name: Verify deployed commit
+        run: |
+          deployed=$(curl -sf https://social-coffee-api.fly.dev/v1/health | jq -r '.data.commit')
+          expected="${{ github.event.workflow_run.head_sha }}"
+          if [ "$deployed" != "$expected" ]; then
+            echo "::error::Deployed commit ($deployed) does not match expected ($expected)"
+            exit 1
+          fi
+          echo "Verified: live commit matches $expected"
