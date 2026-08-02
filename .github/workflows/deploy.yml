@@ -1,0 +1,35 @@
+name: Deploy to Fly
+
+# Runs after the "CI" workflow (ci.yml) finishes on main. `needs:` can't span
+# separate workflow files, so this is the correct way to gate a deploy in its
+# own file behind another workflow's jobs (lint/test/e2e/build) all passing.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    # Only deploy if the CI run actually succeeded (lint + test + e2e + build
+    # all passed — build itself depends on the other three, see ci.yml) and
+    # was triggered by a real push to main, not some other event type.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deploy the exact commit CI just tested, not whatever is on main
+          # "right now" (which could be a newer, untested commit if another
+          # push landed while this run was in flight).
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
