@@ -8,7 +8,7 @@ const allowInsecureCookies = process.env.INSECURE_COOKIES_DEV_ONLY === 'true';
 export const REFRESH_TOKEN_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: !allowInsecureCookies,
-  sameSite: 'strict',
+  sameSite: allowInsecureCookies ? 'lax' : 'none',
   path: '/',
   maxAge: 30 * 24 * 60 * 60 * 1000,
 };
