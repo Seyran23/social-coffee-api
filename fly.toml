@@ -4,6 +4,12 @@ primary_region = "ams"
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  # Runs once, on a fresh machine, before the new release's machines start
+  # taking traffic. Non-zero exit aborts the whole deploy — old machines keep
+  # serving, new code never goes live against a mismatched schema.
+  release_command = "npx prisma migrate deploy"
+
 [env]
   NODE_ENV = "production"
   PORT = "8000"
